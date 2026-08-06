@@ -1,6 +1,9 @@
 [package]
 name = "rustybench-macros"
 version = "0.1.0"
+description = "Procedural macros for the rustybench benchmark runner."
+license = "MIT"
+repository = "https://github.com/joshuarli/rustybench"
 edition = "2024"
 
 [lib]

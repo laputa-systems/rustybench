@@ -16,3 +16,6 @@ docker-test-arm64: docker-build-arm64
 docker-bench-arm64: docker-build-arm64
 	docker run --rm -v "$(CURDIR):/workspace" -w /workspace "$(DOCKER_IMAGE)" \
 		cargo bench --bench bench -- --format json --sample-count 1 --sample-size 1
+
+publish:
+	cargo publish --workspace

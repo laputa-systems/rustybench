@@ -1,16 +1,14 @@
 [package]
 name = "rustybench"
 version = "0.1.0"
+description = "A small benchmark runner for Rust."
+license = "MIT"
+repository = "https://github.com/joshuarli/rustybench"
 edition = "2024"
 rust-version = "1.97"
 exclude = [
     ".github/**",
     ".gitignore",
-    "AGENTS.md",
-    "Cargo.lock",
-    "Cargo.toml.orig",
-    "TODO.md",
-    "rustfmt.toml",
 ]
 
 [dependencies]

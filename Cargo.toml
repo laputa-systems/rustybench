@@ -1,0 +1,32 @@
+[package]
+name = "rustybench"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+exclude = [
+    ".github/**",
+    ".gitignore",
+    "AGENTS.md",
+    "Cargo.lock",
+    "Cargo.toml.orig",
+    "TODO.md",
+    "rustfmt.toml",
+]
+
+[dependencies]
+rustybench-macros = { version = "=0.1.0", path = "macros" }
+regex-lite = "0.1"
+lexopt = "0.3"
+miniserde = "0.1"
+
+[[bin]]
+name = "rustybench"
+path = "src/bin/rustybench.rs"
+
+[[bench]]
+name = "bench"
+path = "benches/bench.rs"
+harness = false
+
+[workspace]
+members = ["macros"]

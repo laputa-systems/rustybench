@@ -11,11 +11,19 @@ exclude = [
     ".gitignore",
 ]
 
+[features]
+default = []
+# Experimental timing backend. This is intentionally excluded from the
+# default build; the default timing contract remains the
+# std::time::Instant/SeqCst path documented in RESOLUTION.md.
+quanta-timer = ["dep:quanta"]
+
 [dependencies]
 rustybench-macros = { version = "=0.1.0", path = "macros" }
 regex-lite = "0.1"
 lexopt = "0.3"
 miniserde = "0.1"
+quanta = { version = "0.12.6", optional = true }
 
 [[bin]]
 name = "rustybench"

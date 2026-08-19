@@ -836,7 +836,11 @@ impl<'a> BenchContext<'a> {
             }
 
             if let Some(initial_start) = initial_start {
-                let last_end = raw_samples.iter().map(|s| s.end).max().unwrap();
+                let last_end = raw_samples
+                    .iter()
+                    .map(|s| s.end)
+                    .reduce(Timestamp::max)
+                    .unwrap();
                 elapsed_picos = last_end.duration_since(initial_start).picos;
             } else {
                 // Progress by at least 1ns to prevent extremely fast

@@ -131,6 +131,46 @@ We therefore deleted the fast timer mode and the direct raw-clock backend.
 There is no `--timer fast` or `RUSTYBENCH_TIMER` setting. Rustybench has one
 default timing contract again: the conservative `Instant`/`SeqCst` path.
 
+## Experimental quanta backend
+
+Rustybench also contains an opt-in `quanta-timer` Cargo feature for comparing
+the clock source without changing the default contract:
+
+```sh
+cargo bench --bench bench --features quanta-timer -- --format json \
+  --sample-count 10 --sample-size 1
+```
+
+The feature replaces only the timestamp's clock value with `quanta::Instant`.
+The full start/end fence sequence, precision measurement, sample-loop
+calibration, and allocation calibration remain unchanged. It is therefore an
+experimental comparison backend, not a second supported timing contract.
+
+Quanta may select a calibrated CPU counter and performs global calibration on
+first use. That can change cross-core behavior, startup cost, and monotonicity
+assumptions, so results must be compared on the same host with the same
+benchmark options. The default build intentionally continues to use the
+conservative `std::time::Instant` path.
+
+### Recorded comparison
+
+On the development macOS/aarch64 host, with one warmup run, three measured
+runs, `sample_count = 10`, and `sample_size = 1`, the results were:
+
+| Metric | Default | `quanta-timer` | Change |
+| --- | ---: | ---: | ---: |
+| Timer precision | 41 ns | 41 ns | unchanged |
+| Sum of benchmark medians | 245.2 µs | 240.1 µs | −2.1% |
+| Measured suite wall time per run | 75.8 ms | 312.2 ms | +311.8% |
+| Harness-control median sum | 2.355 µs | 2.291 µs | −2.7% |
+
+Individual benchmark medians varied from −10.8% to +8.8%, without a
+consistent speedup. Each quanta process also paid roughly 200–240 ms of
+first-use calibration, which dominated suite wall time. These measurements do
+not justify changing the default backend. The `quanta` dependency is optional,
+and `default = []` above ensures it is not compiled or linked unless
+`--features quanta-timer` is explicitly requested.
+
 ## Why not use Mach ticks or CPU counters?
 
 `mach_absolute_time` is a valid monotonic source on macOS, but it returns raw

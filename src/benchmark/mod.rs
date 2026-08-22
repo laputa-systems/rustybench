@@ -16,6 +16,7 @@ use crate::{
         IntoCounter, ItemsCount, KnownCounterKind, MaxCountUInt,
     },
     rustybench::SharedContext,
+    resource::{ProcessResourceDelta, ProcessResourceSnapshot, summarize},
     stats::{RawSample, SampleCollection, Stats, StatsSet, TimeSample},
     time::{FineDuration, Timestamp, bench_overheads, timer_precision},
     util::{self, sync::SyncWrap},
@@ -699,7 +700,7 @@ impl<'a> BenchContext<'a> {
             };
 
             // Sample loop helper:
-            let record_sample = || -> RawSample {
+            let record_sample = |thread_index| -> RawSample {
                 let mut counter_totals: [u128; KnownCounterKind::COUNT] =
                     [0; KnownCounterKind::COUNT];
 
@@ -718,14 +719,19 @@ impl<'a> BenchContext<'a> {
                 };
 
                 // Sample loop:
-                let ([start, end], alloc_info) =
-                    record_sample(sample_size as usize, barrier.as_ref(), &mut count_input);
+                let ([start, end], alloc_info, process_resources) = record_sample(
+                    sample_size as usize,
+                    barrier.as_ref(),
+                    &mut count_input,
+                    thread_index,
+                );
 
                 RawSample {
                     start,
                     end,
                     alloc_info,
                     counter_totals,
+                    process_resources,
                 }
             };
 
@@ -733,7 +739,9 @@ impl<'a> BenchContext<'a> {
             raw_samples.clear();
             self.shared_context
                 .thread_pool
-                .par_extend(&mut raw_samples, aux_thread_count, |_| record_sample());
+                .par_extend(&mut raw_samples, aux_thread_count, |thread_index| {
+                    record_sample(thread_index)
+                });
 
             // Convert `&[Option<RawSample>]` to `&[Sample]`.
             let raw_samples: &[RawSample] = {
@@ -814,6 +822,10 @@ impl<'a> BenchContext<'a> {
                         .insert(sample_index as u32, raw_sample.alloc_info.clone());
                 }
 
+                if let Some(process_resources) = raw_sample.process_resources {
+                    self.samples.process_resources.push(process_resources);
+                }
+
                 // Insert per-input counter information.
                 for counter_kind in KnownCounterKind::ALL {
                     if !self.counters.uses_input_counts(counter_kind) {
@@ -860,7 +872,12 @@ impl<'a> BenchContext<'a> {
         gen_input: G,
         benched: B,
         drop_input: D,
-    ) -> impl Fn(usize, Option<&Barrier>, &mut dyn FnMut(&I)) -> ([Timestamp; 2], ThreadAllocInfo)
+    ) -> impl Fn(
+        usize,
+        Option<&Barrier>,
+        &mut dyn FnMut(&I),
+        usize,
+    ) -> ([Timestamp; 2], ThreadAllocInfo, Option<ProcessResourceDelta>)
     + use<I, O, G, B, D>
     where
         G: Fn() -> I,
@@ -874,8 +891,16 @@ impl<'a> BenchContext<'a> {
         //   the sample loop. The allocation is reused between samples to reduce
         //   time spent between samples.
 
-        move |sample_size: usize, barrier: Option<&Barrier>, count_input: &mut dyn FnMut(&I)| {
+        move |sample_size: usize,
+              barrier: Option<&Barrier>,
+              count_input: &mut dyn FnMut(&I),
+              thread_index: usize| {
             let mut defer_store = DeferStore::<I, O>::default();
+
+            // Only the main thread records process-wide counters. All worker
+            // threads still pass the same synchronization barriers, so the
+            // resulting delta covers the complete process sample once.
+            let mut process_resource_start: Option<ProcessResourceSnapshot> = None;
 
             let mut saved_alloc_info = ThreadAllocInfo::new();
             let mut save_alloc_info = || {
@@ -955,6 +980,9 @@ impl<'a> BenchContext<'a> {
                 }
 
                 sync_threads(true);
+                if thread_index == 0 {
+                    process_resource_start = Some(ProcessResourceSnapshot::capture_unprofiled());
+                }
                 sample_start = Timestamp::start();
 
                 // Sample loop:
@@ -1008,6 +1036,10 @@ impl<'a> BenchContext<'a> {
                         let defer_slots_iter = defer_slots_slice.iter();
 
                         sync_threads(true);
+                        if thread_index == 0 {
+                            process_resource_start =
+                                Some(ProcessResourceSnapshot::capture_unprofiled());
+                        }
                         sample_start = Timestamp::start();
 
                         // Sample loop:
@@ -1061,6 +1093,10 @@ impl<'a> BenchContext<'a> {
                         let defer_inputs_iter = defer_inputs_slice.iter();
 
                         sync_threads(true);
+                        if thread_index == 0 {
+                            process_resource_start =
+                                Some(ProcessResourceSnapshot::capture_unprofiled());
+                        }
                         sample_start = Timestamp::start();
 
                         // Sample loop:
@@ -1090,8 +1126,11 @@ impl<'a> BenchContext<'a> {
             }
 
             let interval = [sample_start, sample_end];
+            let process_resources = process_resource_start.map(|start| {
+                ProcessResourceDelta::between(start, ProcessResourceSnapshot::capture_unprofiled())
+            });
 
-            (interval, saved_alloc_info)
+            (interval, saved_alloc_info, process_resources)
         }
     }
 
@@ -1332,6 +1371,7 @@ impl<'a> BenchContext<'a> {
                     .map(StatsSet::transpose),
             },
             counts,
+            process_resources: summarize(&self.samples.process_resources),
         }
     }
 }

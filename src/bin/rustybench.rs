@@ -5,7 +5,7 @@ use std::{
     fs::{self, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     time::{Duration, Instant},
 };
 
@@ -13,6 +13,7 @@ use lexopt::{Parser, prelude::*};
 use miniserde::{Deserialize, Serialize};
 
 const BASELINE_SCHEMA: u32 = 1;
+const SYSCALL_SCHEMA: u32 = 1;
 const SYSCALL_IMAGE: &str = "benchmark-syscalls:local";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -82,8 +83,50 @@ struct BaselineOptions {
 #[derive(Debug, Default)]
 struct SyscallOptions {
     root: Option<PathBuf>,
+    format: SyscallFormat,
     sample_count: u32,
     sample_size: u32,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum SyscallFormat {
+    #[default]
+    Human,
+    Json,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+struct SyscallReport {
+    schema: u32,
+    /// This report contains strace diagnostics, not benchmark measurements.
+    diagnostic: bool,
+    /// Syscall collection is deliberately outside Rustybench's timing contract.
+    timing: bool,
+    benchmarks: Vec<SyscallBenchmark>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+struct SyscallBenchmark {
+    name: String,
+    marker_status: String,
+    calls: u64,
+    errors: u64,
+    syscalls: Vec<SyscallCount>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+struct SyscallCount {
+    name: String,
+    calls: u64,
+    errors: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedSyscalls {
+    marker_status: &'static str,
+    calls: u64,
+    errors: u64,
+    syscalls: Vec<SyscallCount>,
 }
 
 fn main() {
@@ -121,7 +164,8 @@ fn print_help(program: &OsStr) {
          baseline [OPTIONS] -- COMMAND [ARGS...]\n\
          baseline runs COMMAND repeatedly, collects rustybench JSON, and writes a JSON baseline.\n\
          diff BASELINE CANDIDATE\n\
-         syscalls [--root PATH]   Linux Docker/strace diagnostic\n\n\
+         syscalls [--root PATH] [--format human|json]\n\
+                                  Linux Docker/strace diagnostic (not timing)\n\n\
          baseline options:\n\
            --root PATH             Run COMMAND in PATH\n\
            --baseline PATH         Baseline JSON path\n\
@@ -132,7 +176,10 @@ fn print_help(program: &OsStr) {
            --sample-size N         Pass through to the benchmark executable\n\
            --fast                   One measured run with one sample\n\
            --quiet                  Do not print the comparison table\n\
-           --print-path             Print the selected path and exit",
+           --print-path             Print the selected path and exit\n\n\
+         syscall options:\n\
+           --format human|json      Human table (default) or schema-1 JSON;\n\
+                                    JSON is diagnostic-only and timing is false",
         program.to_string_lossy()
     );
 }
@@ -700,6 +747,17 @@ fn syscalls(arguments: Vec<OsString>) -> Result<(), String> {
                 options.sample_count = parse_value(&mut parser, "sample-count")?
             }
             Long("sample-size") => options.sample_size = parse_value(&mut parser, "sample-size")?,
+            Long("format") => {
+                options.format = match value(parser.value())?.as_str() {
+                    "human" => SyscallFormat::Human,
+                    "json" => SyscallFormat::Json,
+                    format => {
+                        return Err(format!(
+                            "invalid --format value {format:?}; expected human or json"
+                        ));
+                    }
+                };
+            }
             Value(value) => return Err(format!("unexpected argument {value:?}")),
             _ => return Err(argument.unexpected().to_string()),
         }
@@ -707,10 +765,20 @@ fn syscalls(arguments: Vec<OsString>) -> Result<(), String> {
     let root = options
         .root
         .unwrap_or_else(|| env::current_dir().expect("current directory is available"));
-    run_syscall_diagnostic(&root, options.sample_count, options.sample_size)
+    run_syscall_diagnostic(
+        &root,
+        options.sample_count,
+        options.sample_size,
+        options.format,
+    )
 }
 
-fn run_syscall_diagnostic(root: &Path, sample_count: u32, sample_size: u32) -> Result<(), String> {
+fn run_syscall_diagnostic(
+    root: &Path,
+    sample_count: u32,
+    sample_size: u32,
+    format: SyscallFormat,
+) -> Result<(), String> {
     docker(root, &["build", "--quiet", "-t", SYSCALL_IMAGE, "."])?;
     let executable = docker_capture(
         root,
@@ -736,25 +804,47 @@ fn run_syscall_diagnostic(root: &Path, sample_count: u32, sample_size: u32) -> R
             .or_else(|| line.strip_prefix("╰─ "))
     })
     .map(ToOwned::to_owned)
+    .collect::<std::collections::BTreeSet<_>>()
+    .into_iter()
     .collect::<Vec<_>>();
     if names.is_empty() {
         return Err("benchmark executable listed no benchmarks".to_owned());
     }
+    let mut benchmarks = Vec::with_capacity(names.len());
     for name in names {
         let command = format!(
-            "SYSCALL_TRACE=1 strace -f -qq -o /tmp/strace-events {} --bench {} --sample-count {} --sample-size {} >/dev/null 2>&1; cat /tmp/strace-events",
+            "rm -f /tmp/strace-events && SYSCALL_TRACE=1 strace -f -qq -o /tmp/strace-events {} --bench {} --sample-count {} --sample-size {} >/dev/null 2>&1 && cat /tmp/strace-events",
             shell_quote(&executable),
             shell_quote(&name),
             sample_count,
             sample_size
         );
         let trace = docker_capture(root, &command)?;
-        println!(
-            "{name} ({} iterations)",
-            sample_count as u64 * sample_size as u64
-        );
-        print_syscalls(&trace);
-        println!();
+        let parsed = parse_syscalls(&trace);
+        benchmarks.push(SyscallBenchmark {
+            name: name.clone(),
+            marker_status: parsed.marker_status.to_owned(),
+            calls: parsed.calls,
+            errors: parsed.errors,
+            syscalls: parsed.syscalls.clone(),
+        });
+        if format == SyscallFormat::Human {
+            println!(
+                "{name} ({} iterations; diagnostic only; timing not measured)",
+                sample_count as u64 * sample_size as u64
+            );
+            print_syscalls(&parsed);
+            println!();
+        }
+    }
+    if format == SyscallFormat::Json {
+        let report = SyscallReport {
+            schema: SYSCALL_SCHEMA,
+            diagnostic: true,
+            timing: false,
+            benchmarks,
+        };
+        println!("{}", miniserde::json::to_string(&report));
     }
     Ok(())
 }
@@ -774,6 +864,7 @@ struct CargoTarget {
 fn docker(root: &Path, arguments: &[&str]) -> Result<(), String> {
     let mut command = docker_base(root);
     command.args(arguments);
+    command.stdout(Stdio::null());
     let status = command
         .status()
         .map_err(|error| format!("could not run docker: {error}"))?;
@@ -815,15 +906,19 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-fn print_syscalls(trace: &str) {
+fn parse_syscalls(trace: &str) -> ParsedSyscalls {
     let mut totals: BTreeMap<String, (u64, u64)> = BTreeMap::new();
     let mut active = false;
+    let mut saw_begin = false;
+    let mut saw_end = false;
     for line in trace.lines() {
         if line.contains("prctl(PR_SET_NAME, \"BENCH_BEGIN\"") {
+            saw_begin = true;
             active = true;
             continue;
         }
         if line.contains("prctl(PR_SET_NAME, \"BENCH_END\"") {
+            saw_end = true;
             active = false;
             continue;
         }
@@ -843,9 +938,46 @@ fn print_syscalls(trace: &str) {
             entry.1 += 1;
         }
     }
+
+    let marker_status = if !saw_begin {
+        "missing-begin"
+    } else if active || !saw_end {
+        "missing-end"
+    } else {
+        "bounded"
+    };
+    let syscalls = totals
+        .into_iter()
+        .map(|(name, (calls, errors))| SyscallCount {
+            name,
+            calls,
+            errors,
+        })
+        .collect::<Vec<_>>();
+    let calls = syscalls
+        .iter()
+        .map(|syscall| syscall.calls)
+        .sum();
+    let errors = syscalls
+        .iter()
+        .map(|syscall| syscall.errors)
+        .sum();
+    ParsedSyscalls {
+        marker_status,
+        calls,
+        errors,
+        syscalls,
+    }
+}
+
+fn print_syscalls(parsed: &ParsedSyscalls) {
+    println!("  marker bounds: {}", parsed.marker_status);
     println!("  syscall                         calls     errors");
-    for (name, (calls, errors)) in totals {
-        println!("  {name:<30} {calls:>8} {errors:>10}");
+    for syscall in &parsed.syscalls {
+        println!(
+            "  {:<30} {:>8} {:>10}",
+            syscall.name, syscall.calls, syscall.errors
+        );
     }
 }
 
@@ -984,5 +1116,81 @@ mod tests {
         assert_eq!(format_spread(&[10, 10]), "stable");
         assert_eq!(format_spread(&[30, 10, 20]), "10 ns–30 ns");
         assert_eq!(format_spread(&[]), "stable");
+    }
+
+    #[test]
+    fn syscall_trace_counts_only_calls_inside_markers() {
+        let trace = concat!(
+            "1 read(0, 0, 1) = 1\n",
+            "1 prctl(PR_SET_NAME, \"BENCH_BEGIN\") = 0\n",
+            "1 write(1, 0, 1) = 1\n",
+            "1 openat(AT_FDCWD, \"missing\", 0) = -1 ENOENT (No such file)\n",
+            "1 write(1, 0, 1) = 2\n",
+            "1 prctl(PR_SET_NAME, \"BENCH_END\") = 0\n",
+            "1 close(1) = 0\n",
+        );
+
+        let parsed = parse_syscalls(trace);
+
+        assert_eq!(parsed.marker_status, "bounded");
+        assert_eq!(parsed.calls, 3);
+        assert_eq!(parsed.errors, 1);
+        assert_eq!(
+            parsed.syscalls,
+            vec![
+                SyscallCount {
+                    name: "openat".to_owned(),
+                    calls: 1,
+                    errors: 1,
+                },
+                SyscallCount {
+                    name: "write".to_owned(),
+                    calls: 2,
+                    errors: 0,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn syscall_json_is_stable_and_marks_diagnostics_as_not_timing() {
+        let report = SyscallReport {
+            schema: SYSCALL_SCHEMA,
+            diagnostic: true,
+            timing: false,
+            benchmarks: vec![SyscallBenchmark {
+                name: "group::bench".to_owned(),
+                marker_status: "bounded".to_owned(),
+                calls: 3,
+                errors: 1,
+                syscalls: vec![SyscallCount {
+                    name: "openat".to_owned(),
+                    calls: 3,
+                    errors: 1,
+                }],
+            }],
+        };
+
+        let json = miniserde::json::to_string(&report);
+
+        assert_eq!(
+            json,
+            r#"{"schema":1,"diagnostic":true,"timing":false,"benchmarks":[{"name":"group::bench","marker_status":"bounded","calls":3,"errors":1,"syscalls":[{"name":"openat","calls":3,"errors":1}]}]}"#
+        );
+        assert_eq!(miniserde::json::from_str::<SyscallReport>(&json).unwrap(), report);
+    }
+
+    #[test]
+    fn syscall_trace_reports_incomplete_marker_bounds() {
+        let missing_begin = parse_syscalls("1 read(0, 0, 1) = 1\n");
+        assert_eq!(missing_begin.marker_status, "missing-begin");
+        assert_eq!(missing_begin.calls, 0);
+
+        let missing_end = parse_syscalls(concat!(
+            "1 prctl(PR_SET_NAME, \"BENCH_BEGIN\") = 0\n",
+            "1 read(0, 0, 1) = 1\n",
+        ));
+        assert_eq!(missing_end.marker_status, "missing-end");
+        assert_eq!(missing_end.calls, 1);
     }
 }

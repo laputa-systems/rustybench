@@ -3,6 +3,7 @@
 use crate::{
     alloc::{AllocOpMap, AllocTally},
     counter::{KnownCounterKind, MaxCountUInt},
+    resource::ProcessResourceMetrics,
     time::FineDuration,
 };
 
@@ -31,6 +32,9 @@ pub(crate) struct Stats {
 
     /// `Counter` counts associated with the corresponding samples for `time`.
     pub counts: [Option<StatsSet<MaxCountUInt>>; KnownCounterKind::COUNT],
+
+    /// Median process-resource values associated with collected samples.
+    pub process_resources: ProcessResourceMetrics,
 }
 
 impl Stats {

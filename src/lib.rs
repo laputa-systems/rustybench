@@ -30,6 +30,7 @@ mod compile_fail;
 mod config;
 mod entry;
 mod report;
+mod resource;
 mod rustybench;
 mod stats;
 mod time;

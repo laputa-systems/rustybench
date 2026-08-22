@@ -186,7 +186,14 @@ RUSTYBENCH_BYTES_FORMAT, RUSTYBENCH_CHARS_COUNT, and RUSTYBENCH_CYCLES_COUNT.
 --format json writes one report object to stdout. Schema 1 has a schema number and
 a benchmarks array. Each benchmark record contains name, median_ns, alloc_count,
 alloc_bytes, max_alloc_count, max_alloc_bytes, sample_count, and iter_count.
-Keep this shape stable or increment the schema and update its consumers.
+Records may also contain the additive `process_resources` object. Its `status` is
+`supported`, `unsupported`, or `not_applicable`; supported Linux records include
+per-process `user_cpu_ns`, `system_cpu_ns`, voluntary and involuntary context-switch
+counts, and minor and major page-fault counts. `memory_status` describes the bounded
+Linux `/proc` snapshot, with optional `rss_bytes` and `pss_bytes` values. The resource
+object is optional so older schema-1 reports remain readable; absent values are not
+silently converted to zero. Keep this shape stable or increment the schema and update
+its consumers.
 
 The rustybench binary also contains the replacement for the repository's benchmark
 scripts:

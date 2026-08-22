@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::{
     alloc::ThreadAllocInfo,
     counter::KnownCounterKind,
+    resource::ProcessResourceDelta,
     time::{FineDuration, Timestamp},
 };
 
@@ -24,6 +25,7 @@ pub(crate) struct RawSample {
     pub end: Timestamp,
     pub alloc_info: ThreadAllocInfo,
     pub counter_totals: [u128; KnownCounterKind::COUNT],
+    pub process_resources: Option<ProcessResourceDelta>,
 }
 
 impl RawSample {
@@ -45,6 +47,9 @@ pub(crate) struct SampleCollection {
 
     /// Allocation information associated with `time_samples` by index.
     pub alloc_info_by_sample: HashMap<u32, ThreadAllocInfo>,
+
+    /// Process-resource deltas, one per synchronized process sample.
+    pub process_resources: Vec<ProcessResourceDelta>,
 }
 
 impl SampleCollection {
@@ -53,6 +58,7 @@ impl SampleCollection {
     pub fn clear(&mut self) {
         self.time_samples.clear();
         self.alloc_info_by_sample.clear();
+        self.process_resources.clear();
     }
 
     /// Computes the total number of iterations across all samples.

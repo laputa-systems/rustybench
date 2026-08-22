@@ -2,7 +2,11 @@
 
 use miniserde::{Deserialize, Serialize};
 
-use crate::{alloc::AllocOp, stats::Stats};
+use crate::{
+    alloc::AllocOp,
+    resource::ProcessResourceMetrics,
+    stats::Stats,
+};
 
 /// The schema emitted by `--format json`.
 pub(crate) const SCHEMA: u32 = 1;
@@ -18,6 +22,9 @@ pub(crate) struct BenchmarkRecord {
     pub max_alloc_bytes: u64,
     pub sample_count: u32,
     pub iter_count: u64,
+    /// Process-resource measurements are optional for compatibility with
+    /// schema-1 reports emitted before resource collection was added.
+    pub process_resources: Option<ProcessResourceMetrics>,
 }
 
 /// The complete output of one benchmark executable invocation.
@@ -41,6 +48,7 @@ impl BenchmarkRecord {
             max_alloc_bytes: count(max_alloc.size.median),
             sample_count: stats.sample_count,
             iter_count: stats.iter_count,
+            process_resources: Some(stats.process_resources.clone()),
         }
     }
 }
@@ -73,6 +81,7 @@ fn count(value: f64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resource::ResourceStatus;
 
     #[test]
     fn json_round_trip_preserves_report_contract() {
@@ -85,10 +94,44 @@ mod tests {
             max_alloc_bytes: 64,
             sample_count: 10,
             iter_count: 1_000,
+            process_resources: Some(ProcessResourceMetrics {
+                status: ResourceStatus::Unsupported,
+                user_cpu_ns: None,
+                system_cpu_ns: None,
+                voluntary_context_switches: None,
+                involuntary_context_switches: None,
+                minor_page_faults: None,
+                major_page_faults: None,
+                memory_status: ResourceStatus::Unsupported,
+                rss_bytes: None,
+                pss_bytes: None,
+            }),
         }]);
 
         let json = miniserde::json::to_string(&report);
+        assert!(json.contains("\"process_resources\""));
+        assert!(json.contains("\"status\":\"unsupported\""));
         let decoded: BenchmarkReport = miniserde::json::from_str(&json).unwrap();
         assert_eq!(decoded, report);
+    }
+
+    #[test]
+    fn old_schema_one_record_without_resources_remains_readable() {
+        let json = r#"{
+            "schema":1,
+            "benchmarks":[{
+                "name":"old",
+                "median_ns":42,
+                "alloc_count":0,
+                "alloc_bytes":0,
+                "max_alloc_count":0,
+                "max_alloc_bytes":0,
+                "sample_count":1,
+                "iter_count":1
+            }]
+        }"#;
+
+        let report: BenchmarkReport = miniserde::json::from_str(json).unwrap();
+        assert_eq!(report.benchmarks[0].process_resources, None);
     }
 }

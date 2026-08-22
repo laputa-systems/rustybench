@@ -76,6 +76,21 @@ The timestamp pair is paid once per sample and amortized across `sample_size`.
 With `sample_size = 1`, the boundary can be a substantial fraction of a tiny
 operation. With larger samples, it contributes less to each iteration.
 
+## Process-resource records
+
+JSON benchmark records may include the additive `process_resources` object. The
+runner captures it at the same synchronized sample boundaries as timing, using
+process-wide Linux `getrusage(RUSAGE_SELF)` counters for user/system CPU time,
+voluntary/involuntary context switches, and minor/major page faults. Values are
+reported as per-sample deltas and summarized by median across collected samples;
+the `*_cpu_ns` fields are nanoseconds.
+
+On Linux, the post-sample memory snapshot reads `VmRSS` from the bounded
+`/proc/self/status` file and `Pss` from `/proc/self/smaps_rollup` when available.
+`status` and `memory_status` explicitly distinguish `supported`, `unsupported`,
+and `not_applicable`; absent numeric values remain `null`. macOS keeps the same
+report shape and emits `unsupported` for this Linux-specific extension.
+
 ## Calibrated overhead
 
 `time::timer::bench_overheads` measures overhead once and caches it. The

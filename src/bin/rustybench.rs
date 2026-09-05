@@ -142,13 +142,14 @@ fn main() {
     let result = match command.to_str() {
         Some("baseline") => baseline(arguments.collect()),
         Some("diff") => diff(arguments.collect()),
+        Some("check") => check(arguments.collect()),
         Some("syscalls") => syscalls(arguments.collect()),
         Some("help") | Some("--help") | Some("-h") => {
             print_help(&program);
             Ok(())
         }
         _ => Err(format!(
-            "unknown subcommand {command:?}; expected baseline, diff, or syscalls"
+            "unknown subcommand {command:?}; expected baseline, diff, check, or syscalls"
         )),
     };
 
@@ -160,10 +161,13 @@ fn main() {
 
 fn print_help(program: &OsStr) {
     eprintln!(
-        "Usage: {} <baseline|diff|syscalls> [OPTIONS]\n\n\
+        "Usage: {} <baseline|diff|check|syscalls> [OPTIONS]\n\n\
          baseline [OPTIONS] -- COMMAND [ARGS...]\n\
          baseline runs COMMAND repeatedly, collects rustybench JSON, and writes a JSON baseline.\n\
          diff BASELINE CANDIDATE\n\
+         check BUDGET CANDIDATE\n\
+         check requires exactly the budget benchmark names and fails when a candidate\n\
+         metric exceeds its schema-1 budget limit.\n\
          syscalls [--root PATH] [--format human|json]\n\
                                   Linux Docker/strace diagnostic (not timing)\n\n\
          baseline options:\n\
@@ -459,6 +463,104 @@ fn diff(arguments: Vec<OsString>) -> Result<(), String> {
         format!("{} → {}", paths[0].display(), paths[1].display()),
     );
     Ok(())
+}
+
+/// `check BUDGET CANDIDATE` uses schema-1 records as absolute ceilings and requires
+/// exactly one record for each benchmark name in both files.
+fn check(arguments: Vec<OsString>) -> Result<(), String> {
+    let mut parser = Parser::from_args(arguments);
+    let mut paths = Vec::new();
+    while let Some(argument) = parser.next().map_err(|error| error.to_string())? {
+        match argument {
+            Value(value) => paths.push(PathBuf::from(value)),
+            _ => return Err(argument.unexpected().to_string()),
+        }
+    }
+    if paths.len() != 2 {
+        return Err("check expects BUDGET and CANDIDATE".to_owned());
+    }
+
+    let budget = read_baseline(&paths[0])?;
+    let candidate = read_baseline(&paths[1])?;
+    check_budget(&budget, &candidate)
+}
+
+fn check_budget(budget: &[BaselineRecord], candidate: &[BaselineRecord]) -> Result<(), String> {
+    let budget = benchmark_index(budget, "budget")?;
+    let candidate = benchmark_index(candidate, "candidate")?;
+    let mut violations = Vec::new();
+
+    for name in budget.keys() {
+        if !candidate.contains_key(name) {
+            violations.push(format!("required benchmark `{name}` is missing from candidate"));
+        }
+    }
+    for name in candidate.keys() {
+        if !budget.contains_key(name) {
+            violations.push(format!("candidate benchmark `{name}` is not in budget"));
+        }
+    }
+
+    for (name, budget_record) in &budget {
+        let Some(candidate_record) = candidate.get(name) else {
+            continue;
+        };
+        for (metric, limit, value) in [
+            (
+                "median_ns",
+                budget_record.median_ns,
+                candidate_record.median_ns,
+            ),
+            (
+                "alloc_count",
+                budget_record.alloc_count,
+                candidate_record.alloc_count,
+            ),
+            (
+                "alloc_bytes",
+                budget_record.alloc_bytes,
+                candidate_record.alloc_bytes,
+            ),
+            (
+                "max_alloc_count",
+                budget_record.max_alloc_count,
+                candidate_record.max_alloc_count,
+            ),
+            (
+                "max_alloc_bytes",
+                budget_record.max_alloc_bytes,
+                candidate_record.max_alloc_bytes,
+            ),
+        ] {
+            if value > limit {
+                violations.push(format!(
+                    "benchmark `{name}` {metric} is {value}, exceeding budget {limit}"
+                ));
+            }
+        }
+    }
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("budget check failed:\n  {}", violations.join("\n  ")))
+    }
+}
+
+fn benchmark_index<'a>(
+    records: &'a [BaselineRecord],
+    file_kind: &str,
+) -> Result<BTreeMap<&'a str, &'a BaselineRecord>, String> {
+    let mut index = BTreeMap::new();
+    for record in records {
+        if index.insert(record.name.as_str(), record).is_some() {
+            return Err(format!(
+                "{file_kind} contains duplicate benchmark `{}`",
+                record.name
+            ));
+        }
+    }
+    Ok(index)
 }
 
 fn read_baseline(path: &Path) -> Result<Vec<BaselineRecord>, String> {
@@ -984,6 +1086,21 @@ fn print_syscalls(parsed: &ParsedSyscalls) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static NEXT_TEMPORARY_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
+
+    struct TestBaselineFiles {
+        directory: PathBuf,
+        budget: PathBuf,
+        candidate: PathBuf,
+    }
+
+    impl Drop for TestBaselineFiles {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.directory);
+        }
+    }
 
     fn benchmark(name: &str, median_ns: u64) -> BenchmarkRecord {
         BenchmarkRecord {
@@ -1003,6 +1120,205 @@ mod tests {
             schema: BASELINE_SCHEMA,
             benchmarks: records,
         }
+    }
+
+    fn baseline_file(records: Vec<BaselineRecord>) -> BaselineFile {
+        BaselineFile {
+            schema: BASELINE_SCHEMA,
+            host: "test".to_owned(),
+            platform: "test".to_owned(),
+            arch: "test".to_owned(),
+            mode: "test".to_owned(),
+            warmup_runs: 0,
+            measured_runs: 1,
+            sample_count: None,
+            sample_size: None,
+            wall_ns: 1,
+            warmup_wall_ns: 0,
+            measured_wall_ns: 1,
+            suite_wall_ns: vec![1],
+            benchmarks: records,
+        }
+    }
+
+    fn temporary_baseline_files(
+        budget_records: Vec<BaselineRecord>,
+        candidate_records: Vec<BaselineRecord>,
+    ) -> TestBaselineFiles {
+        let sequence = NEXT_TEMPORARY_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+        let directory = env::temp_dir().join(format!(
+            "rustybench-check-test-{}-{sequence}",
+            std::process::id()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let budget = directory.join("budget.json");
+        let candidate = directory.join("candidate.json");
+        write_json_atomic(&budget, &baseline_file(budget_records)).unwrap();
+        write_json_atomic(&candidate, &baseline_file(candidate_records)).unwrap();
+        TestBaselineFiles {
+            directory,
+            budget,
+            candidate,
+        }
+    }
+
+    fn check_files(files: &TestBaselineFiles) -> Result<(), String> {
+        check(vec![
+            files.budget.as_os_str().to_owned(),
+            files.candidate.as_os_str().to_owned(),
+        ])
+    }
+
+    fn budget_record() -> BaselineRecord {
+        BaselineRecord {
+            name: "group::bench".to_owned(),
+            median_ns: 100,
+            alloc_count: 10,
+            alloc_bytes: 200,
+            max_alloc_count: 5,
+            max_alloc_bytes: 100,
+            run_median_ns: None,
+        }
+    }
+
+    fn assert_budget_metric_regression(
+        metric: &str,
+        change: impl FnOnce(&mut BaselineRecord),
+    ) {
+        let budget = budget_record();
+        let mut candidate = budget.clone();
+        change(&mut candidate);
+        let files = temporary_baseline_files(vec![budget], vec![candidate]);
+
+        let error = check_files(&files).unwrap_err();
+
+        assert!(error.contains(metric), "{error}");
+    }
+
+    #[test]
+    fn check_accepts_candidate_within_all_budget_limits() {
+        let budget = budget_record();
+        let candidate = budget.clone();
+        let files = temporary_baseline_files(vec![budget], vec![candidate]);
+
+        check_files(&files).unwrap();
+    }
+
+    #[test]
+    fn check_rejects_median_ns_regression() {
+        assert_budget_metric_regression("median_ns", |record| record.median_ns += 1);
+    }
+
+    #[test]
+    fn check_rejects_alloc_count_regression() {
+        assert_budget_metric_regression("alloc_count", |record| record.alloc_count += 1);
+    }
+
+    #[test]
+    fn check_rejects_alloc_bytes_regression() {
+        assert_budget_metric_regression("alloc_bytes", |record| record.alloc_bytes += 1);
+    }
+
+    #[test]
+    fn check_rejects_max_alloc_count_regression() {
+        assert_budget_metric_regression("max_alloc_count", |record| record.max_alloc_count += 1);
+    }
+
+    #[test]
+    fn check_rejects_max_alloc_bytes_regression() {
+        assert_budget_metric_regression("max_alloc_bytes", |record| record.max_alloc_bytes += 1);
+    }
+
+    #[test]
+    fn check_requires_an_exact_benchmark_inventory() {
+        let budget = budget_record();
+        let candidate = BaselineRecord {
+            name: "group::new_bench".to_owned(),
+            ..budget.clone()
+        };
+        let files = temporary_baseline_files(vec![budget], vec![candidate]);
+
+        let error = check_files(&files).unwrap_err();
+
+        assert!(error.contains("missing from candidate"), "{error}");
+        assert!(error.contains("not in budget"), "{error}");
+    }
+
+    #[test]
+    fn check_rejects_duplicate_benchmark_names() {
+        let record = budget_record();
+        for (file_kind, budget, candidate) in [
+            (
+                "budget",
+                vec![record.clone(), record.clone()],
+                vec![record.clone()],
+            ),
+            (
+                "candidate",
+                vec![record.clone()],
+                vec![record.clone(), record.clone()],
+            ),
+        ] {
+            let files = temporary_baseline_files(budget, candidate);
+
+            let error = check_files(&files).unwrap_err();
+
+            assert!(
+                error.contains(&format!("{file_kind} contains duplicate benchmark")),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn check_rejects_candidate_records_missing_required_metrics() {
+        let budget = budget_record();
+        let candidate = budget.clone();
+        let files = temporary_baseline_files(vec![budget], vec![candidate]);
+        fs::write(
+            &files.candidate,
+            r#"{
+                "schema":1,"host":"test","platform":"test","arch":"test",
+                "mode":"test","warmup_runs":0,"measured_runs":1,
+                "sample_count":null,"sample_size":null,"wall_ns":1,
+                "warmup_wall_ns":0,"measured_wall_ns":1,"suite_wall_ns":[1],
+                "benchmarks":[{"name":"group::bench","median_ns":100,
+                "alloc_count":10,"alloc_bytes":200,"max_alloc_count":5}]
+            }"#,
+        )
+        .unwrap();
+
+        let error = check_files(&files).unwrap_err();
+
+        assert!(error.contains("invalid baseline JSON"), "{error}");
+    }
+
+    #[test]
+    fn check_rejects_unsupported_budget_schema() {
+        let budget = budget_record();
+        let candidate = budget.clone();
+        let files = temporary_baseline_files(vec![budget], vec![candidate]);
+        let mut unsupported_schema = baseline_file(vec![budget_record()]);
+        unsupported_schema.schema = BASELINE_SCHEMA + 1;
+        write_json_atomic(&files.budget, &unsupported_schema).unwrap();
+
+        let error = check_files(&files).unwrap_err();
+
+        assert!(error.contains("unsupported baseline schema"), "{error}");
+    }
+
+    #[test]
+    fn diff_remains_advisory_when_a_candidate_exceeds_a_budget() {
+        let budget = budget_record();
+        let mut candidate = budget.clone();
+        candidate.median_ns += 1;
+        let files = temporary_baseline_files(vec![budget], vec![candidate]);
+
+        diff(vec![
+            files.budget.as_os_str().to_owned(),
+            files.candidate.as_os_str().to_owned(),
+        ])
+        .unwrap();
     }
 
     #[test]

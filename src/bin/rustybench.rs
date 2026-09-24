@@ -1056,14 +1056,8 @@ fn parse_syscalls(trace: &str) -> ParsedSyscalls {
             errors,
         })
         .collect::<Vec<_>>();
-    let calls = syscalls
-        .iter()
-        .map(|syscall| syscall.calls)
-        .sum();
-    let errors = syscalls
-        .iter()
-        .map(|syscall| syscall.errors)
-        .sum();
+    let calls = syscalls.iter().map(|syscall| syscall.calls).sum();
+    let errors = syscalls.iter().map(|syscall| syscall.errors).sum();
     ParsedSyscalls {
         marker_status,
         calls,
@@ -1493,7 +1487,10 @@ mod tests {
             json,
             r#"{"schema":1,"diagnostic":true,"timing":false,"benchmarks":[{"name":"group::bench","marker_status":"bounded","calls":3,"errors":1,"syscalls":[{"name":"openat","calls":3,"errors":1}]}]}"#
         );
-        assert_eq!(miniserde::json::from_str::<SyscallReport>(&json).unwrap(), report);
+        assert_eq!(
+            miniserde::json::from_str::<SyscallReport>(&json).unwrap(),
+            report
+        );
     }
 
     #[test]

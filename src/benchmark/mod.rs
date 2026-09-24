@@ -15,8 +15,8 @@ use crate::{
         AnyCounter, AsCountUInt, BytesCount, CharsCount, Counter, CounterCollection, CyclesCount,
         IntoCounter, ItemsCount, KnownCounterKind, MaxCountUInt,
     },
-    rustybench::SharedContext,
     resource::{ProcessResourceDelta, ProcessResourceSnapshot, summarize},
+    rustybench::SharedContext,
     stats::{RawSample, SampleCollection, Stats, StatsSet, TimeSample},
     time::{FineDuration, Timestamp, bench_overheads, timer_precision},
     util::{self, sync::SyncWrap},
@@ -737,11 +737,11 @@ impl<'a> BenchContext<'a> {
 
             // Sample loop:
             raw_samples.clear();
-            self.shared_context
-                .thread_pool
-                .par_extend(&mut raw_samples, aux_thread_count, |thread_index| {
-                    record_sample(thread_index)
-                });
+            self.shared_context.thread_pool.par_extend(
+                &mut raw_samples,
+                aux_thread_count,
+                |thread_index| record_sample(thread_index),
+            );
 
             // Convert `&[Option<RawSample>]` to `&[Sample]`.
             let raw_samples: &[RawSample] = {
@@ -877,8 +877,11 @@ impl<'a> BenchContext<'a> {
         Option<&Barrier>,
         &mut dyn FnMut(&I),
         usize,
-    ) -> ([Timestamp; 2], ThreadAllocInfo, Option<ProcessResourceDelta>)
-    + use<I, O, G, B, D>
+    ) -> (
+        [Timestamp; 2],
+        ThreadAllocInfo,
+        Option<ProcessResourceDelta>,
+    ) + use<I, O, G, B, D>
     where
         G: Fn() -> I,
         B: Fn(&UnsafeCell<MaybeUninit<I>>) -> O,

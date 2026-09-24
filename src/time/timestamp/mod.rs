@@ -1,9 +1,9 @@
 #[cfg(feature = "quanta-timer")]
 use quanta::Instant;
-#[cfg(not(feature = "quanta-timer"))]
-use std::time::Instant;
 #[cfg(feature = "quanta-timer")]
 use std::num::NonZeroU8;
+#[cfg(not(feature = "quanta-timer"))]
+use std::time::Instant;
 
 use crate::time::{FineDuration, fence};
 

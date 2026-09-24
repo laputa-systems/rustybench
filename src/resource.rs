@@ -150,10 +150,7 @@ impl ProcessResourceSnapshot {
 
 impl ProcessResourceDelta {
     /// Computes monotonic counter deltas and retains the post-sample memory.
-    pub(crate) fn between(
-        before: ProcessResourceSnapshot,
-        after: ProcessResourceSnapshot,
-    ) -> Self {
+    pub(crate) fn between(before: ProcessResourceSnapshot, after: ProcessResourceSnapshot) -> Self {
         let status = match (before.status, after.status) {
             (ResourceStatus::Supported, ResourceStatus::Supported) => ResourceStatus::Supported,
             (ResourceStatus::NotApplicable, _) | (_, ResourceStatus::NotApplicable) => {
@@ -543,7 +540,10 @@ mod tests {
             involuntary_context_switches: None,
             minor_page_faults: Some(3),
             major_page_faults: None,
-            memory: MemorySnapshot { rss_bytes, ..memory },
+            memory: MemorySnapshot {
+                rss_bytes,
+                ..memory
+            },
         };
 
         let metrics = summarize(&[sample(3, Some(100)), sample(1, Some(200))]);
@@ -561,15 +561,11 @@ mod tests {
         let snapshot = ProcessResourceSnapshot::capture();
         assert!(matches!(
             snapshot.status,
-            ResourceStatus::Supported
-                | ResourceStatus::Unsupported
-                | ResourceStatus::NotApplicable
+            ResourceStatus::Supported | ResourceStatus::Unsupported | ResourceStatus::NotApplicable
         ));
         assert!(matches!(
             snapshot.memory.status,
-            ResourceStatus::Supported
-                | ResourceStatus::Unsupported
-                | ResourceStatus::NotApplicable
+            ResourceStatus::Supported | ResourceStatus::Unsupported | ResourceStatus::NotApplicable
         ));
     }
 

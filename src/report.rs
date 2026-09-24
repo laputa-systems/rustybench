@@ -2,11 +2,7 @@
 
 use miniserde::{Deserialize, Serialize};
 
-use crate::{
-    alloc::AllocOp,
-    resource::ProcessResourceMetrics,
-    stats::Stats,
-};
+use crate::{alloc::AllocOp, resource::ProcessResourceMetrics, stats::Stats};
 
 /// The schema emitted by `--format json`.
 pub(crate) const SCHEMA: u32 = 1;

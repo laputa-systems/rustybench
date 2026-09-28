@@ -1,5 +1,8 @@
 # Rustybench working guide
 
+The minimum supported Rust version is 1.100, which stabilizes the standard
+`Allocator` API used by `AllocProfiler`.
+
 Rustybench is a small benchmark runner. It keeps the useful registration and Bencher
 ideas, but its command line parser is lexopt, its
 machine-readable format is miniserde-based JSON, and its benchmark tooling is built
@@ -95,9 +98,10 @@ constant `counter` for fixed work per iteration, or an `input_counter` when the 
 depends on the generated input. Use `black_box` for values and `black_box_drop` when
 the result is intentionally discarded.
 
-For allocation comparisons, install `AllocProfiler::system()` as the global allocator
-in the benchmark executable. Keep allocator choice and profiling configuration the
-same across compared baselines; profiling changes the measured path.
+For process-wide allocation comparisons, install `AllocProfiler::system()` as the
+global allocator in the benchmark executable. For a collection-local comparison,
+pass it to `Vec::new_in` or `Box::new_in`. Keep allocator choice and profiling
+configuration the same across compared baselines; profiling changes the measured path.
 
 ## Bencher and input ownership
 

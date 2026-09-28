@@ -5,7 +5,7 @@ description = "A small benchmark runner for Rust."
 license = "MIT"
 repository = "https://github.com/joshuarli/rustybench"
 edition = "2024"
-rust-version = "1.97"
+rust-version = "1.100"
 exclude = [
     ".github/**",
     ".gitignore",

@@ -13,7 +13,7 @@ static ALLOC: AllocProfiler = AllocProfiler::system();
 /// Whether to ignore allocation info set during the benchmark.
 pub(crate) static IGNORE_ALLOC: AtomicFlag = AtomicFlag::new(false);
 
-/// Measures [`GlobalAlloc`] memory usage.
+/// Measures allocation usage for [`GlobalAlloc`] and [`Allocator`] allocators.
 ///
 /// # Examples
 ///
@@ -61,6 +61,16 @@ pub(crate) static IGNORE_ALLOC: AtomicFlag = AtomicFlag::new(false);
 ///
 /// See the [`bench`](macro@crate::bench) documentation for more examples.
 ///
+/// `AllocProfiler` also implements [`Allocator`] when its wrapped allocator does,
+/// so it can profile allocations local to a collection:
+///
+/// ```
+/// use rustybench::AllocProfiler;
+///
+/// let mut values = Vec::new_in(AllocProfiler::system());
+/// values.push(42);
+/// ```
+///
 /// # Implementation
 ///
 /// Collecting allocation information happens at any point during which Rustybench is
@@ -71,8 +81,9 @@ pub(crate) static IGNORE_ALLOC: AtomicFlag = AtomicFlag::new(false);
 ///   contention when benchmarks involve multiple threads, either through
 ///   options like [`threads`](macro@crate::bench#threads) or internally
 ///   spawning their own threads.
-/// - It does not check for overflow and assumes it will not happen. This is
-///   subject to change in the future.
+/// - Arithmetic wraps on overflow so allocator methods do not unwind. In
+///   practice, a benchmark should not accumulate enough operations or bytes to
+///   reach this limit.
 ///
 /// Allocation information is the only data Rustybench records outside of timing, and
 /// thus it also has the only code that affects timing. Steps for recording
@@ -81,8 +92,8 @@ pub(crate) static IGNORE_ALLOC: AtomicFlag = AtomicFlag::new(false);
 ///
 ///    [`thread_local!`] is used on all supported platforms.
 ///
-/// 2. Increment allocation operation invocation count and bytes count
-///    (a.k.a. size).
+/// 2. Increment successful allocation operation counts and requested byte
+///    sizes (and record deallocations).
 ///
 /// Allocation information is recorded in thread-local storage to prevent
 /// slowdowns from synchronized sharing when using multiple threads, through
@@ -95,53 +106,123 @@ pub struct AllocProfiler<Alloc = System> {
     alloc: Alloc,
 }
 
+#[inline]
+fn tally_alloc(size: usize) {
+    if let Some(mut info) = ThreadAllocInfo::try_current() {
+        // SAFETY: We have exclusive access.
+        let info = unsafe { info.as_mut() };
+        info.tally_alloc(size);
+    }
+}
+
+#[inline]
+fn tally_dealloc(size: usize) {
+    if let Some(mut info) = ThreadAllocInfo::try_current() {
+        // SAFETY: We have exclusive access.
+        let info = unsafe { info.as_mut() };
+        info.tally_dealloc(size);
+    }
+}
+
+#[inline]
+fn tally_realloc(old_size: usize, new_size: usize) {
+    if let Some(mut info) = ThreadAllocInfo::try_current() {
+        // SAFETY: We have exclusive access.
+        let info = unsafe { info.as_mut() };
+        info.tally_realloc(old_size, new_size);
+    }
+}
+
 unsafe impl<A: GlobalAlloc> GlobalAlloc for AllocProfiler<A> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // Tally allocation count.
-        if let Some(mut info) = ThreadAllocInfo::try_current() {
-            // SAFETY: We have exclusive access.
-            let info = unsafe { info.as_mut() };
-
-            info.tally_alloc(layout.size());
-        };
-
-        unsafe { self.alloc.alloc(layout) }
+        let ptr = unsafe { self.alloc.alloc(layout) };
+        if !ptr.is_null() {
+            tally_alloc(layout.size());
+        }
+        ptr
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        // Tally allocation count.
-        if let Some(mut info) = ThreadAllocInfo::try_current() {
-            // SAFETY: We have exclusive access.
-            let info = unsafe { info.as_mut() };
-
-            info.tally_alloc(layout.size());
-        };
-
-        unsafe { self.alloc.alloc_zeroed(layout) }
+        let ptr = unsafe { self.alloc.alloc_zeroed(layout) };
+        if !ptr.is_null() {
+            tally_alloc(layout.size());
+        }
+        ptr
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        // Tally reallocation count.
-        if let Some(mut info) = ThreadAllocInfo::try_current() {
-            // SAFETY: We have exclusive access.
-            let info = unsafe { info.as_mut() };
-
-            info.tally_realloc(layout.size(), new_size);
-        };
-
-        unsafe { self.alloc.realloc(ptr, layout, new_size) }
+        let ptr = unsafe { self.alloc.realloc(ptr, layout, new_size) };
+        if !ptr.is_null() {
+            tally_realloc(layout.size(), new_size);
+        }
+        ptr
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // Tally deallocation count.
-        if let Some(mut info) = ThreadAllocInfo::try_current() {
-            // SAFETY: We have exclusive access.
-            let info = unsafe { info.as_mut() };
+        unsafe { self.alloc.dealloc(ptr, layout) };
+        tally_dealloc(layout.size());
+    }
+}
 
-            info.tally_dealloc(layout.size());
-        };
+unsafe impl<A: Allocator> Allocator for AllocProfiler<A> {
+    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        let allocation = self.alloc.allocate(layout);
+        if allocation.is_ok() {
+            tally_alloc(layout.size());
+        }
+        allocation
+    }
 
-        unsafe { self.alloc.dealloc(ptr, layout) }
+    fn allocate_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        let allocation = self.alloc.allocate_zeroed(layout);
+        if allocation.is_ok() {
+            tally_alloc(layout.size());
+        }
+        allocation
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+        unsafe { self.alloc.deallocate(ptr, layout) };
+        tally_dealloc(layout.size());
+    }
+
+    unsafe fn grow(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        let allocation = unsafe { self.alloc.grow(ptr, old_layout, new_layout) };
+        if allocation.is_ok() {
+            tally_realloc(old_layout.size(), new_layout.size());
+        }
+        allocation
+    }
+
+    unsafe fn grow_zeroed(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        let allocation = unsafe { self.alloc.grow_zeroed(ptr, old_layout, new_layout) };
+        if allocation.is_ok() {
+            tally_realloc(old_layout.size(), new_layout.size());
+        }
+        allocation
+    }
+
+    unsafe fn shrink(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        let allocation = unsafe { self.alloc.shrink(ptr, old_layout, new_layout) };
+        if allocation.is_ok() {
+            tally_realloc(old_layout.size(), new_layout.size());
+        }
+        allocation
     }
 }
 
@@ -154,7 +235,10 @@ impl AllocProfiler {
 }
 
 impl<A> AllocProfiler<A> {
-    /// Profiles a [`GlobalAlloc`].
+    /// Wraps an allocator for profiling.
+    ///
+    /// The result implements [`GlobalAlloc`] if `A` does, and [`Allocator`] if
+    /// `A` does.
     #[inline]
     pub const fn new(alloc: A) -> Self {
         Self { alloc }
@@ -169,8 +253,9 @@ pub(crate) struct ThreadAllocInfo {
     // directly index `&self` without an offset.
     pub tallies: ThreadAllocTallyMap,
 
-    // NOTE: Max size and count are signed for convenience but can never be
-    // negative due to it being initialized to 0.
+    // NOTE: Current and max size and count are signed for convenience. The
+    // current values stay nonnegative during normal allocation operations but
+    // may wrap after an extreme number of operations.
     //
     // PERF: Grouping current/max fields together by count and size makes
     // `tally_alloc` take the least time on M1 Mac.
@@ -242,10 +327,10 @@ impl ThreadAllocInfo {
     pub fn tally_alloc(&mut self, size: usize) {
         self.tally_op(AllocOp::Alloc, size);
 
-        self.current_count += 1;
+        self.current_count = self.current_count.wrapping_add(1);
         self.max_count = self.max_count.max(self.current_count);
 
-        self.current_size += size as ThreadAllocCountSigned;
+        self.current_size = self.current_size.wrapping_add(size as ThreadAllocCountSigned);
         self.max_size = self.max_size.max(self.current_size);
     }
 
@@ -254,8 +339,8 @@ impl ThreadAllocInfo {
     pub fn tally_dealloc(&mut self, size: usize) {
         self.tally_op(AllocOp::Dealloc, size);
 
-        self.current_count -= 1;
-        self.current_size -= size as ThreadAllocCountSigned;
+        self.current_count = self.current_count.wrapping_sub(1);
+        self.current_size = self.current_size.wrapping_sub(size as ThreadAllocCountSigned);
     }
 
     /// Tallies the total count and size of the reallocation operation.
@@ -268,7 +353,7 @@ impl ThreadAllocInfo {
         self.tally_op(AllocOp::realloc(is_shrink), abs_diff);
 
         // NOTE: Realloc does not change allocation count.
-        self.current_size += diff as ThreadAllocCountSigned;
+        self.current_size = self.current_size.wrapping_add(diff as ThreadAllocCountSigned);
         self.max_size = self.max_size.max(self.current_size);
     }
 
@@ -276,8 +361,8 @@ impl ThreadAllocInfo {
     #[inline]
     fn tally_op(&mut self, op: AllocOp, size: usize) {
         let tally = self.tallies.get_mut(op);
-        tally.count += 1;
-        tally.size += size as ThreadAllocCount;
+        tally.count = tally.count.wrapping_add(1);
+        tally.size = tally.size.wrapping_add(size as ThreadAllocCount);
     }
 }
 

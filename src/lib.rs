@@ -1,6 +1,7 @@
 //! [bench_attr]: macro@bench
 //! [bench_attr_examples]: macro@bench#examples
 //! [bench_attr_threads]: macro@bench#threads
+#![feature(allocator_api)]
 #![warn(missing_docs)]
 #![allow(
     unknown_lints,

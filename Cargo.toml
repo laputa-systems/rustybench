@@ -9,6 +9,7 @@ rust-version = "1.100"
 exclude = [
     ".github/**",
     ".gitignore",
+    "tools/bump_minor_release.sh",
 ]
 
 [features]

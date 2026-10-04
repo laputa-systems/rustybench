@@ -2,6 +2,11 @@ lint:
 	cargo fmt --all
 	cargo clippy --fix --allow-dirty --all-targets --all-features -- --deny warnings
 
+.PHONY: bump
+
+bump:
+	./tools/bump_minor_release.sh
+
 DOCKER_IMAGE ?= rustybench:linux-arm64
 
 .PHONY: docker-build-arm64 docker-test-arm64 docker-bench-arm64

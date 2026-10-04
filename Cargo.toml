@@ -1,6 +1,6 @@
 [package]
 name = "rustybench"
-version = "0.1.0"
+version = "0.2.0"
 description = "A small benchmark runner for Rust."
 license = "MIT"
 repository = "https://github.com/joshuarli/rustybench"
@@ -20,7 +20,7 @@ default = []
 quanta-timer = ["dep:quanta"]
 
 [dependencies]
-rustybench-macros = { version = "=0.1.0", path = "macros" }
+rustybench-macros = { version = "=0.2.0", path = "macros" }
 regex-lite = "0.1"
 lexopt = "0.3"
 miniserde = "0.1"

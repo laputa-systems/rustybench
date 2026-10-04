@@ -330,7 +330,9 @@ impl ThreadAllocInfo {
         self.current_count = self.current_count.wrapping_add(1);
         self.max_count = self.max_count.max(self.current_count);
 
-        self.current_size = self.current_size.wrapping_add(size as ThreadAllocCountSigned);
+        self.current_size = self
+            .current_size
+            .wrapping_add(size as ThreadAllocCountSigned);
         self.max_size = self.max_size.max(self.current_size);
     }
 
@@ -340,7 +342,9 @@ impl ThreadAllocInfo {
         self.tally_op(AllocOp::Dealloc, size);
 
         self.current_count = self.current_count.wrapping_sub(1);
-        self.current_size = self.current_size.wrapping_sub(size as ThreadAllocCountSigned);
+        self.current_size = self
+            .current_size
+            .wrapping_sub(size as ThreadAllocCountSigned);
     }
 
     /// Tallies the total count and size of the reallocation operation.
@@ -353,7 +357,9 @@ impl ThreadAllocInfo {
         self.tally_op(AllocOp::realloc(is_shrink), abs_diff);
 
         // NOTE: Realloc does not change allocation count.
-        self.current_size = self.current_size.wrapping_add(diff as ThreadAllocCountSigned);
+        self.current_size = self
+            .current_size
+            .wrapping_add(diff as ThreadAllocCountSigned);
         self.max_size = self.max_size.max(self.current_size);
     }
 

@@ -740,7 +740,7 @@ impl<'a> BenchContext<'a> {
             self.shared_context.thread_pool.par_extend(
                 &mut raw_samples,
                 aux_thread_count,
-                |thread_index| record_sample(thread_index),
+                record_sample,
             );
 
             // Convert `&[Option<RawSample>]` to `&[Sample]`.

@@ -492,7 +492,9 @@ fn check_budget(budget: &[BaselineRecord], candidate: &[BaselineRecord]) -> Resu
 
     for name in budget.keys() {
         if !candidate.contains_key(name) {
-            violations.push(format!("required benchmark `{name}` is missing from candidate"));
+            violations.push(format!(
+                "required benchmark `{name}` is missing from candidate"
+            ));
         }
     }
     for name in candidate.keys() {
@@ -543,7 +545,10 @@ fn check_budget(budget: &[BaselineRecord], candidate: &[BaselineRecord]) -> Resu
     if violations.is_empty() {
         Ok(())
     } else {
-        Err(format!("budget check failed:\n  {}", violations.join("\n  ")))
+        Err(format!(
+            "budget check failed:\n  {}",
+            violations.join("\n  ")
+        ))
     }
 }
 
@@ -1175,10 +1180,7 @@ mod tests {
         }
     }
 
-    fn assert_budget_metric_regression(
-        metric: &str,
-        change: impl FnOnce(&mut BaselineRecord),
-    ) {
+    fn assert_budget_metric_regression(metric: &str, change: impl FnOnce(&mut BaselineRecord)) {
         let budget = budget_record();
         let mut candidate = budget.clone();
         change(&mut candidate);

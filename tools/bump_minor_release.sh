@@ -339,9 +339,14 @@ temporary_manifest=
 
 cargo check --workspace --quiet
 cargo publish -p "$macros_name" --dry-run --allow-dirty
-cargo publish -p "$package_name" --dry-run --allow-dirty
 git add -- Cargo.toml Cargo.lock macros/Cargo.toml
 git commit -m "$release_subject"
 release_committed=1
 git tag -a "$next_tag" -m "$package_name $next_version"
-publish_workspace "$next_version"
+# The runner pins an exact macros version, so the registry must serve the new
+# macros crate before even a dry-run of the runner can resolve it. Publish in
+# dependency order after the release commit; the retry path above converges
+# the same way when re-run after a partial publish.
+publish_package "$macros_name" "$next_version"
+cargo publish -p "$package_name" --dry-run --allow-dirty
+publish_package "$package_name" "$next_version"

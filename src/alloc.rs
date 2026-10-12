@@ -65,6 +65,7 @@ pub(crate) static IGNORE_ALLOC: AtomicFlag = AtomicFlag::new(false);
 /// so it can profile allocations local to a collection:
 ///
 /// ```
+/// #![feature(allocator_api)]
 /// use rustybench::AllocProfiler;
 ///
 /// let mut values = Vec::new_in(AllocProfiler::system());

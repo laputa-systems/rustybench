@@ -3,7 +3,7 @@ name = "rustybench-macros"
 version = "0.3.0"
 description = "Procedural macros for the rustybench benchmark runner."
 license = "MIT"
-repository = "https://github.com/joshuarli/rustybench"
+repository = "https://github.com/laputa-systems/rustybench"
 edition = "2024"
 
 [lib]

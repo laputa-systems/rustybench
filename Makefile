@@ -1,8 +1,11 @@
+test:
+	cargo test --locked
+
 lint:
 	cargo fmt --all
 	cargo clippy --fix --allow-dirty --all-targets --all-features -- --deny warnings
 
-.PHONY: publish
+.PHONY: test lint publish
 
 publish:
 	./tools/bump_minor_release.sh

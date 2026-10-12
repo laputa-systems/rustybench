@@ -48,7 +48,7 @@ and `diff` subcommands. `RESOLUTION.md` explains the timing mechanics.
 ## Make targets
 
 - `make test` runs `cargo test --locked`.
-- `make lint` runs `cargo fmt` and `cargo clippy --fix`.
+- `make lint` runs `cargo clippy --fix`.
 - `make publish` runs `tools/bump_minor_release.sh`.
 - `make docker-build-arm64`, `docker-test-arm64`, `docker-bench-arm64` build
   and run the tests and benchmarks in a Linux arm64 container.

@@ -15,8 +15,8 @@ exclude = [
 [features]
 default = []
 # Experimental timing backend. This is intentionally excluded from the
-# default build; the default timing contract remains the
-# std::time::Instant/SeqCst path documented in RESOLUTION.md.
+# default build; the default timing contract remains std::time::Instant with
+# the full fence boundary.
 quanta-timer = ["dep:quanta"]
 
 [dependencies]

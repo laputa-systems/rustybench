@@ -28,6 +28,8 @@ mod tests;
 mod args;
 mod defer;
 mod options;
+#[cfg(target_os = "linux")]
+mod syscall_marker;
 
 use defer::{DeferSlot, DeferStore};
 
@@ -887,6 +889,17 @@ impl<'a> BenchContext<'a> {
         B: Fn(&UnsafeCell<MaybeUninit<I>>) -> O,
         D: Fn(&UnsafeCell<MaybeUninit<I>>),
     {
+        #[cfg(target_os = "linux")]
+        let syscall_markers_enabled = std::env::var_os("RUSTYBENCH_SYSCALL_TRACE").is_some();
+        #[cfg(not(target_os = "linux"))]
+        let syscall_markers_enabled = false;
+
+        #[cfg(target_os = "linux")]
+        let original_task_name = syscall_markers_enabled.then(|| {
+            syscall_marker::current_task_name()
+                .expect("could not read the Linux task name for syscall tracing")
+        });
+
         // We defer:
         // - Usage of `gen_input` values.
         // - Drop destructor for `O`, preventing it from affecting sample
@@ -903,7 +916,11 @@ impl<'a> BenchContext<'a> {
             // Only the main thread records process-wide counters. All worker
             // threads still pass the same synchronization barriers, so the
             // resulting delta covers the complete process sample once.
-            let mut process_resource_start: Option<ProcessResourceSnapshot> = None;
+            let process_resource_start: Option<ProcessResourceSnapshot>;
+            #[cfg(target_os = "linux")]
+            let mut syscall_marker_started = false;
+            #[cfg(target_os = "linux")]
+            let mut syscall_marker_error: Option<std::io::Error> = None;
 
             let mut saved_alloc_info = ThreadAllocInfo::new();
             let mut save_alloc_info = || {
@@ -922,38 +939,94 @@ impl<'a> BenchContext<'a> {
             //
             // This ensures work external to the timed section does not affect
             // the timing of other threads.
-            let sync_threads = |is_start: bool| {
-                sync_impl(barrier, is_start);
+            // Monomorphize implementation to reduce code size.
+            #[inline(never)]
+            fn sync_impl<F>(
+                barrier: Option<&Barrier>,
+                is_start: bool,
+                on_boundary: Option<F>,
+            ) -> Option<ProcessResourceSnapshot>
+            where
+                F: FnOnce() -> Option<ProcessResourceSnapshot>,
+            {
+                // Ensure benchmarked section has a `ThreadAllocInfo`
+                // allocated for the current thread and clear previous info.
+                let alloc_info = if is_start {
+                    ThreadAllocInfo::current()
+                } else {
+                    None
+                };
 
-                // Monomorphize implementation to reduce code size.
-                #[inline(never)]
-                fn sync_impl(barrier: Option<&Barrier>, is_start: bool) {
-                    // Ensure benchmarked section has a `ThreadAllocInfo`
-                    // allocated for the current thread and clear previous info.
-                    let alloc_info = if is_start {
-                        ThreadAllocInfo::current()
-                    } else {
-                        None
-                    };
+                // Synchronize all threads.
+                //
+                // This is the final synchronization point for the end.
+                if let Some(barrier) = barrier {
+                    barrier.wait();
+                }
 
-                    // Synchronize all threads.
-                    //
-                    // This is the final synchronization point for the end.
+                if let Some(mut alloc_info) = alloc_info {
+                    // SAFETY: We have exclusive access.
+                    let alloc_info = unsafe { alloc_info.as_mut() };
+
+                    alloc_info.clear();
+                }
+
+                if is_start {
+                    let resource_start = on_boundary.and_then(|on_boundary| on_boundary());
+
+                    // The start marker precedes the release barrier, so all
+                    // workers' benchmark calls remain inside the trace.
                     if let Some(barrier) = barrier {
                         barrier.wait();
                     }
+                    resource_start
+                } else {
+                    if let Some(on_boundary) = on_boundary {
+                        on_boundary();
+                    }
+                    None
+                }
+            }
 
-                    if let Some(mut alloc_info) = alloc_info {
-                        // SAFETY: We have exclusive access.
-                        let alloc_info = unsafe { alloc_info.as_mut() };
+            #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+            let mut sync_threads = |is_start: bool| {
+                let on_boundary = (thread_index == 0 && syscall_markers_enabled).then(|| || {
+                    #[cfg(target_os = "linux")]
+                    {
+                        if is_start {
+                            // Keep process-resource reads outside the syscall
+                            // interval before releasing workers into the sample.
+                            let resource_start = ProcessResourceSnapshot::capture_unprofiled();
+                            syscall_marker_error = syscall_marker::begin().err();
+                            syscall_marker_started = syscall_marker_error.is_none();
+                            return Some(resource_start);
+                        }
 
-                        alloc_info.clear();
+                        if syscall_marker_started {
+                            if let Err(error) = syscall_marker::end() {
+                                syscall_marker_error = Some(error);
+                            }
 
-                        // Synchronize all threads.
-                        if let Some(barrier) = barrier {
-                            barrier.wait();
+                            if let Err(error) = syscall_marker::restore(
+                                original_task_name
+                                    .as_ref()
+                                    .expect("syscall tracing saved the original Linux task name"),
+                            ) {
+                                if syscall_marker_error.is_none() {
+                                    syscall_marker_error = Some(error);
+                                }
+                            }
                         }
                     }
+
+                    None
+                });
+                let resource_start = sync_impl(barrier, is_start, on_boundary);
+
+                if is_start && thread_index == 0 && !syscall_markers_enabled {
+                    Some(ProcessResourceSnapshot::capture_unprofiled())
+                } else {
+                    resource_start
                 }
             };
 
@@ -982,10 +1055,7 @@ impl<'a> BenchContext<'a> {
                     mem::forget(input);
                 }
 
-                sync_threads(true);
-                if thread_index == 0 {
-                    process_resource_start = Some(ProcessResourceSnapshot::capture_unprofiled());
-                }
+                process_resource_start = sync_threads(true);
                 sample_start = Timestamp::start();
 
                 // Sample loop:
@@ -998,7 +1068,7 @@ impl<'a> BenchContext<'a> {
                 }
 
                 sample_end = Timestamp::end();
-                sync_threads(false);
+                let _ = sync_threads(false);
                 save_alloc_info();
 
                 // Drop outputs and inputs.
@@ -1038,11 +1108,7 @@ impl<'a> BenchContext<'a> {
                         // reduce benchmarking overhead.
                         let defer_slots_iter = defer_slots_slice.iter();
 
-                        sync_threads(true);
-                        if thread_index == 0 {
-                            process_resource_start =
-                                Some(ProcessResourceSnapshot::capture_unprofiled());
-                        }
+                        process_resource_start = sync_threads(true);
                         sample_start = Timestamp::start();
 
                         // Sample loop:
@@ -1057,7 +1123,7 @@ impl<'a> BenchContext<'a> {
                         }
 
                         sample_end = Timestamp::end();
-                        sync_threads(false);
+                        let _ = sync_threads(false);
                         save_alloc_info();
 
                         // Prevent the optimizer from removing writes to inputs
@@ -1095,11 +1161,7 @@ impl<'a> BenchContext<'a> {
                         // reduce benchmarking overhead.
                         let defer_inputs_iter = defer_inputs_slice.iter();
 
-                        sync_threads(true);
-                        if thread_index == 0 {
-                            process_resource_start =
-                                Some(ProcessResourceSnapshot::capture_unprofiled());
-                        }
+                        process_resource_start = sync_threads(true);
                         sample_start = Timestamp::start();
 
                         // Sample loop:
@@ -1110,7 +1172,7 @@ impl<'a> BenchContext<'a> {
                         }
 
                         sample_end = Timestamp::end();
-                        sync_threads(false);
+                        let _ = sync_threads(false);
                         save_alloc_info();
 
                         // Prevent the optimizer from removing writes to inputs
@@ -1132,6 +1194,11 @@ impl<'a> BenchContext<'a> {
             let process_resources = process_resource_start.map(|start| {
                 ProcessResourceDelta::between(start, ProcessResourceSnapshot::capture_unprofiled())
             });
+
+            #[cfg(target_os = "linux")]
+            if let Some(error) = syscall_marker_error {
+                panic!("Linux syscall trace marker failed: {error}");
+            }
 
             (interval, saved_alloc_info, process_resources)
         }

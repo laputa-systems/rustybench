@@ -1,25 +1,23 @@
 # rustybench
 
-A small benchmark runner for Rust. It supports macOS and Linux and needs
-Rust 1.100 or newer (the standard `Allocator` API backs `AllocProfiler`).
-The repository pins a nightly toolchain in `rust-toolchain.toml`.
+A small Rust benchmark runner for macOS and Linux. Cargo declares Rust 1.100
+as the minimum supported version.
 
-Command line parsing uses `lexopt`, machine-readable output is
-`miniserde`-based JSON, and benchmark baselines and diffs are built into the
-`rustybench` binary rather than an external CLI stack.
+## Install and run
 
-## Usage
-
-Add the crate as a dev-dependency and disable Cargo's default bench harness:
+Add Rustybench as a dev-dependency and disable Cargo's default benchmark
+harness for each benchmark target:
 
 ```toml
 [dev-dependencies]
-rustybench = { path = "../rustybench" }
+rustybench = "0.3"
 
 [[bench]]
 name = "example"
 harness = false
 ```
+
+Add `benches/example.rs` for the `example` target:
 
 ```rust
 use rustybench::black_box;
@@ -36,23 +34,23 @@ fn add() -> i32 {
 
 ```sh
 cargo bench --bench example
-cargo bench --bench example -- add        # regex filter
 cargo bench --bench example -- --list
-cargo bench --bench example -- --format json
+cargo bench --bench example -- add
 ```
 
-`AGENTS.md` documents the attribute options, `Bencher` input ownership,
-counters, allocation profiling, the JSON report schema, and the `baseline`
-and `diff` subcommands. `RESOLUTION.md` explains the timing mechanics.
+The runner accepts command-line options for filtering and output format, plus
+`RUSTYBENCH_*` environment settings for sorting, sampling, threads, timing, and
+counters. Use `--help` for the full list. Output is human-readable by default; select
+`--format terse` for compact output or `--format json` for machine-readable
+reports. See the [command reference](docs/commands.md) and [report format](docs/reports.md).
 
-## Make targets
+See the [benchmarking guide](docs/benchmarking.md) for registration, input
+ownership, counters, and allocation profiling. The [timing guide](docs/timing.md)
+explains sample timing and calibration.
 
-- `make test` runs `cargo test --locked`.
-- `make lint` runs `cargo clippy --fix`.
-- `make publish` runs `tools/bump_minor_release.sh`.
-- `make docker-build-arm64`, `docker-test-arm64`, `docker-bench-arm64` build
-  and run the tests and benchmarks in a Linux arm64 container.
+For Rust API documentation, see [docs.rs](https://docs.rs/rustybench/0.3.0).
+For help, visit the [project repository](https://github.com/laputa-systems/rustybench).
 
 ## License
 
-MIT
+MIT; see [LICENSE](LICENSE).

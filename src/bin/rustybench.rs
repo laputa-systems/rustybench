@@ -168,7 +168,7 @@ fn print_help(program: &OsStr) {
          check BUDGET CANDIDATE\n\
          check requires exactly the budget benchmark names and fails when a candidate\n\
          metric exceeds its schema-1 budget limit.\n\
-         syscalls [--root PATH] [--format human|json]\n\
+         syscalls [--root PATH] [--sample-count N] [--sample-size N] [--format human|json]\n\
                                   Linux Docker/strace diagnostic (not timing)\n\n\
          baseline options:\n\
            --root PATH             Run COMMAND in PATH\n\
@@ -178,10 +178,12 @@ fn print_help(program: &OsStr) {
            --runs N                Measured runs (default 3)\n\
            --sample-count N        Pass through to the benchmark executable\n\
            --sample-size N         Pass through to the benchmark executable\n\
-           --fast                   One measured run with one sample\n\
+           --fast                   No warmup; one run, sample, and iteration\n\
            --quiet                  Do not print the comparison table\n\
            --print-path             Print the selected path and exit\n\n\
          syscall options:\n\
+           --sample-count N         Samples per benchmark (default 10)\n\
+           --sample-size N          Iterations per sample (default 100)\n\
            --format human|json      Human table (default) or schema-1 JSON;\n\
                                     JSON is diagnostic-only and timing is false",
         program.to_string_lossy()
@@ -920,7 +922,7 @@ fn run_syscall_diagnostic(
     let mut benchmarks = Vec::with_capacity(names.len());
     for name in names {
         let command = format!(
-            "rm -f /tmp/strace-events && SYSCALL_TRACE=1 strace -f -qq -o /tmp/strace-events {} --bench {} --sample-count {} --sample-size {} >/dev/null 2>&1 && cat /tmp/strace-events",
+            "rm -f /tmp/strace-events && RUSTYBENCH_SYSCALL_TRACE=1 strace -f -qq -o /tmp/strace-events {} --bench {} --sample-count {} --sample-size {} >/dev/null 2>&1 && cat /tmp/strace-events",
             shell_quote(&executable),
             shell_quote(&name),
             sample_count,
@@ -1458,6 +1460,40 @@ mod tests {
                 SyscallCount {
                     name: "write".to_owned(),
                     calls: 2,
+                    errors: 0,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn syscall_trace_accumulates_calls_across_sample_markers() {
+        let trace = concat!(
+            "1 prctl(PR_SET_NAME, \"BENCH_BEGIN\") = 0\n",
+            "1 read(0, 0, 1) = 1\n",
+            "1 prctl(PR_SET_NAME, \"BENCH_END\") = 0\n",
+            "1 write(1, 0, 1) = 1\n",
+            "1 prctl(PR_SET_NAME, \"BENCH_BEGIN\") = 0\n",
+            "1 openat(AT_FDCWD, \"input\", 0) = 3\n",
+            "1 prctl(PR_SET_NAME, \"BENCH_END\") = 0\n",
+        );
+
+        let parsed = parse_syscalls(trace);
+
+        assert_eq!(parsed.marker_status, "bounded");
+        assert_eq!(parsed.calls, 2);
+        assert_eq!(parsed.errors, 0);
+        assert_eq!(
+            parsed.syscalls,
+            vec![
+                SyscallCount {
+                    name: "openat".to_owned(),
+                    calls: 1,
+                    errors: 0,
+                },
+                SyscallCount {
+                    name: "read".to_owned(),
+                    calls: 1,
                     errors: 0,
                 },
             ]

@@ -86,34 +86,6 @@ impl<T: Copy> Arg<T> for &&&T {
     }
 }
 
-/// Used by `#[rustybench::bench(threads = ...)]` to leak thread counts for easy
-/// global usage in [`BenchOptions::threads`].
-///
-/// This enables the `threads` option to be polymorphic over:
-/// - `usize`
-/// - `bool`
-///     - `true` is 0
-///     - `false` is 1
-/// - Iterators:
-///     - `[usize; N]`
-///     - `&[usize; N]`
-///     - `&[usize]`
-///
-/// # Orphan Rules Hack
-///
-/// Normally we can't implement a trait over both `usize` and `I: IntoIterator`
-/// because the compiler has no guarantee that `usize` will never implement
-/// `IntoIterator`. Ideally we would handle this with specialization, but that's
-/// not stable.
-///
-/// The solution here is to make `IntoThreads` generic to implement technically
-/// different traits for `usize` and `IntoIterator` because of different `IMP`
-/// values. We then call verbatim `IntoThreads::into_threads(val)` and have the
-/// compiler infer the generic parameter for the single `IntoThreads`
-/// implementation.
-///
-/// It's fair to assume that scalar primitives will never implement
-/// `IntoIterator`, so this hack shouldn't break in the future 🤠.
 pub trait IntoThreads<const IMP: u32> {
     fn into_threads(self) -> Cow<'static, [usize]>;
 }

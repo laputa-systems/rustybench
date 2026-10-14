@@ -1,6 +1,5 @@
 use std::cmp::Ordering;
 
-/// Compares strings by treating internal integers as atomic units.
 pub fn natural_cmp(a: &str, b: &str) -> Ordering {
     Iterator::cmp(Tokenizer { input: a }, Tokenizer { input: b })
 }
@@ -10,7 +9,6 @@ fn cmp_int(mut a: &str, mut b: &str) -> Ordering {
     a = a.trim_start_matches('0');
     b = b.trim_start_matches('0');
 
-    // Compare to 0.
     match (a.is_empty(), b.is_empty()) {
         (true, true) => return Ordering::Equal,
         (true, false) => return Ordering::Less,
@@ -18,13 +16,11 @@ fn cmp_int(mut a: &str, mut b: &str) -> Ordering {
         _ => {}
     }
 
-    // Compare length.
     match a.len().cmp(&b.len()) {
         Ordering::Equal => {}
         ord => return ord,
     }
 
-    // Compare digits.
     a.cmp(b)
 }
 
@@ -53,9 +49,7 @@ impl Ord for Token<'_> {
     }
 }
 
-/// Lexes a string into "tokens".
 struct Tokenizer<'a> {
-    /// The remaining characters to process.
     input: &'a str,
 }
 
@@ -69,7 +63,6 @@ impl<'a> Iterator for Tokenizer<'a> {
 
         let mut kind_len = 1;
         for ch in bytes {
-            // Stop on character kind change.
             if ch.is_ascii_digit() != is_int {
                 break;
             }

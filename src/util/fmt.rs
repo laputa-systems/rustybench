@@ -2,7 +2,6 @@ use std::fmt;
 
 use crate::counter::{AnyCounter, BytesFormat, KnownCounterKind};
 
-/// Formats an `f64` to the given number of significant figures.
 pub(crate) fn format_f64(val: f64, sig_figs: usize) -> String {
     let mut str = val.to_string();
 
@@ -17,7 +16,6 @@ pub(crate) fn format_f64(val: f64, sig_figs: usize) -> String {
             let fract_range = fract_start..fract_end;
 
             if let Some(fract_str) = str.get(fract_range) {
-                // Get the offset from the end before all 0s.
                 let pre_zero = fract_str
                     .bytes()
                     .rev()
@@ -82,7 +80,6 @@ impl fmt::Display for DisplayThroughput<'_> {
         str.push(' ');
         str.push_str(scale.suffix(format));
 
-        // Fill up to specified width.
         if let Some(fill_len) = f.width().and_then(|width| width.checked_sub(str.len())) {
             match f.align() {
                 None | Some(fmt::Alignment::Left) => {
@@ -96,7 +93,6 @@ impl fmt::Display for DisplayThroughput<'_> {
     }
 }
 
-/// Converts a value to the appropriate scale.
 fn scale_value(value: f64, bytes_format: BytesFormat) -> (f64, Scale) {
     let starts = scale_starts(bytes_format);
 

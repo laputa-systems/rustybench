@@ -47,9 +47,9 @@ The environment variables for runner options are:
 ## Baseline tools
 
 The `rustybench` binary provides baseline collection, comparison, budget checks,
-and a Linux syscall diagnostic. Install it with `cargo install rustybench`, or
-run it from this repository with `cargo run --bin rustybench --`. Its help
-lists all options.
+and a Linux syscall diagnostic. Use `cargo +nightly install rustybench` to
+install it, or run it from this repository with
+`cargo run --bin rustybench --`. Its help lists all options.
 
 Collect and compare a baseline:
 

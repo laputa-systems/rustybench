@@ -250,16 +250,8 @@ impl<A> AllocProfiler<A> {
 #[derive(Clone, Default)]
 #[repr(C)]
 pub(crate) struct ThreadAllocInfo {
-    // NOTE: `tallies` should be ordered first so that `tally_realloc` can
-    // directly index `&self` without an offset.
     pub tallies: ThreadAllocTallyMap,
 
-    // NOTE: Current and max size and count are signed for convenience. The
-    // current values stay nonnegative during normal allocation operations but
-    // may wrap after an extreme number of operations.
-    //
-    // PERF: Grouping current/max fields together by count and size makes
-    // `tally_alloc` take the least time on M1 Mac.
     pub current_count: ThreadAllocCountSigned,
     pub max_count: ThreadAllocCountSigned,
     pub current_size: ThreadAllocCountSigned,

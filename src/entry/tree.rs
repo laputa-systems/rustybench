@@ -9,28 +9,21 @@ use crate::{
     util::sort::natural_cmp,
 };
 
-/// `BenchEntry` tree organized by path components.
 pub(crate) enum EntryTree<'a> {
-    /// Benchmark group; parent to leaves and other parents.
     Parent {
         raw_name: &'a str,
         group: Option<&'a GroupEntry>,
         children: Vec<Self>,
     },
 
-    /// Benchmark entry leaf.
     Leaf {
-        /// The benchmark entry being run.
         entry: AnyBenchEntry<'a>,
 
-        /// The names of arguments to run.
         args: Option<Vec<&'static &'static str>>,
     },
 }
 
 impl<'a> EntryTree<'a> {
-    /// Constructs a tree from an iterator of benchmark entries in the order
-    /// they're produced.
     pub fn from_benches<I>(benches: I) -> Vec<Self>
     where
         I: IntoIterator<Item = AnyBenchEntry<'a>>,
@@ -55,13 +48,7 @@ impl<'a> EntryTree<'a> {
         result
     }
 
-    /// Returns the maximum span for a name in `tree`.
-    ///
-    /// This is the number of terminal columns used for labeling benchmark names
-    /// prior to emitting stats columns.
     pub fn max_name_span(tree: &[Self], depth: usize) -> usize {
-        // The number of terminal columns used per-depth for box drawing
-        // characters. For example, "│  ╰─ " is 6 for depth 2.
         const DEPTH_COLS: usize = 3;
 
         tree.iter()
@@ -72,10 +59,8 @@ impl<'a> EntryTree<'a> {
                     prefix_len + name_len
                 };
 
-                // The maximum span of any descendent.
                 let children_max_span = Self::max_name_span(node.children(), depth + 1);
 
-                // The maximum span of any runtime argument.
                 let args_max_span = node
                     .arg_names()
                     .unwrap_or_default()
@@ -94,9 +79,7 @@ impl<'a> EntryTree<'a> {
             .unwrap_or_default()
     }
 
-    /// Returns the likely span for a given column.
     pub fn common_column_width(tree: &[Self], column: TreeColumn) -> usize {
-        // Time and throughput info.
         if column.is_time_stat() {
             return KnownCounterKind::MAX_COMMON_COLUMN_WIDTH;
         }
@@ -113,8 +96,6 @@ impl<'a> EntryTree<'a> {
                         1 + sample_count.checked_ilog10().unwrap_or_default() as usize
                     }
 
-                    // Iters is the last column, so it does not need pad width.
-                    // All other columns are time stats handled previously.
                     _ => 0,
                 };
 
@@ -124,14 +105,7 @@ impl<'a> EntryTree<'a> {
             .unwrap_or_default()
     }
 
-    /// Inserts the benchmark group into a tree.
-    ///
-    /// Groups are inserted after tree construction because it prevents having
-    /// parents without terminating leaves. Groups that do not match an existing
-    /// parent are not inserted.
     pub fn insert_group(mut tree: &mut [Self], group: &'a GroupEntry) {
-        // Update `tree` to be the innermost set of subtrees whose parents match
-        // `group.module_path`.
         'component: for component in group.meta.module_path_components() {
             for subtree in tree {
                 match subtree {
@@ -145,11 +119,9 @@ impl<'a> EntryTree<'a> {
                 }
             }
 
-            // No matches for this component in any subtrees.
             return;
         }
 
-        // Find the matching tree to insert the group into.
         for subtree in tree {
             match subtree {
                 EntryTree::Parent {
@@ -165,7 +137,6 @@ impl<'a> EntryTree<'a> {
         }
     }
 
-    /// Removes entries from the tree whose paths do not match the filter.
     pub fn retain(tree: &mut Vec<Self>, mut filter: impl FnMut(&str) -> bool) {
         fn retain(
             tree: &mut Vec<EntryTree>,
@@ -185,7 +156,6 @@ impl<'a> EntryTree<'a> {
                     EntryTree::Parent { children, .. } => {
                         retain(children, subtree_path, filter);
 
-                        // If no children exist, filter out this parent.
                         !children.is_empty()
                     }
 
@@ -196,7 +166,6 @@ impl<'a> EntryTree<'a> {
                     } => {
                         args.retain(|arg| filter(&format!("{subtree_path}::{arg}")));
 
-                        // If no arguments exist, filter out this leaf.
                         !args.is_empty()
                     }
                 }
@@ -205,7 +174,6 @@ impl<'a> EntryTree<'a> {
         retain(tree, "", &mut filter);
     }
 
-    /// Sorts the tree by the given ordering.
     pub fn sort_by_attr(tree: &mut [Self], attr: SortingAttr, reverse: bool) {
         let apply_reverse = |ordering: Ordering| {
             if reverse {
@@ -219,14 +187,12 @@ impl<'a> EntryTree<'a> {
 
         tree.iter_mut().for_each(|tree| {
             match tree {
-                // Sort benchmark arguments.
                 EntryTree::Leaf { args, .. } => {
                     if let Some(args) = args {
                         args.sort_by(|&a, &b| apply_reverse(attr.cmp_bench_arg_names(a, b)));
                     }
                 }
 
-                // Sort children.
                 EntryTree::Parent { children, .. } => {
                     Self::sort_by_attr(children, attr, reverse);
                 }
@@ -235,14 +201,11 @@ impl<'a> EntryTree<'a> {
     }
 
     fn cmp_by_attr(&self, other: &Self, attr: SortingAttr) -> Ordering {
-        // We take advantage of the fact that entries have stable addresses,
-        // unlike `EntryTree`.
         let entry_addr_ordering = match (self.entry_addr(), other.entry_addr()) {
             (Some(a), Some(b)) => Some(a.cmp(&b)),
             _ => None,
         };
 
-        // If entries have the same address, then all attributes will be equal.
         if matches!(entry_addr_ordering, Some(Ordering::Equal)) {
             return Ordering::Equal;
         }
@@ -254,10 +217,6 @@ impl<'a> EntryTree<'a> {
                 SortingAttr::Location => {
                     let location_ordering = self.location().cmp(&other.location());
 
-                    // Use the entry's address to break location ties.
-                    //
-                    // This makes generic benchmarks use the same order as their
-                    // types and constants.
                     if location_ordering.is_eq() {
                         entry_addr_ordering.unwrap_or(Ordering::Equal)
                     } else {
@@ -274,10 +233,6 @@ impl<'a> EntryTree<'a> {
         Ordering::Equal
     }
 
-    /// Helper for constructing a tree.
-    ///
-    /// This uses recursion because the iterative approach runs into limitations
-    /// with mutable borrows.
     fn insert_entry(
         tree: &mut Vec<Self>,
         entry: AnyBenchEntry<'a>,
@@ -299,7 +254,6 @@ impl<'a> EntryTree<'a> {
         Self::insert_entry(children, entry, rem_modules);
     }
 
-    /// Constructs a sequence of branches from a module path.
     fn from_path(
         entry: AnyBenchEntry<'a>,
         current_module: &'a str,
@@ -320,7 +274,6 @@ impl<'a> EntryTree<'a> {
         }
     }
 
-    /// Finds the `Parent.children` for the corresponding module in `tree`.
     fn get_children<'t>(tree: &'t mut [Self], module: &str) -> Option<&'t mut Vec<Self>> {
         tree.iter_mut().find_map(|tree| match tree {
             Self::Parent {
@@ -332,19 +285,13 @@ impl<'a> EntryTree<'a> {
         })
     }
 
-    /// Returns an integer denoting the enum variant.
-    ///
-    /// This is used instead of `std::mem::Discriminant` because it does not
-    /// implement `Ord`.
     pub fn kind(&self) -> i32 {
-        // Leaves should appear before parents.
         match self {
             Self::Leaf { .. } => 0,
             Self::Parent { .. } => 1,
         }
     }
 
-    /// Returns a pointer to use as the identity of the entry.
     pub fn entry_addr(&self) -> Option<NonNull<()>> {
         match self {
             Self::Leaf { entry, .. } => Some(entry.entry_addr()),
@@ -386,8 +333,6 @@ impl<'a> EntryTree<'a> {
         }
     }
 
-    /// Returns the location of this entry, group, or the children's earliest
-    /// location.
     fn location(&self) -> Option<&'a EntryLocation> {
         if let Some(common) = self.meta() {
             Some(&common.location)
@@ -396,11 +341,6 @@ impl<'a> EntryTree<'a> {
         }
     }
 
-    /// Compares display names naturally, taking into account integers.
-    ///
-    /// There is special consideration for the `PartialOrd` implementation of
-    /// constants, so that `EntryConst` can sort integers and floats by value
-    /// instead of lexicographically.
     fn cmp_display_name(&self, other: &Self) -> Ordering {
         match (self, other) {
             (

@@ -4,7 +4,6 @@ use crate::util::sort::natural_cmp;
 
 pub mod filter;
 
-/// `Duration` wrapper for parsing seconds from the CLI.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ParsedSeconds(pub Duration);
 
@@ -16,22 +15,15 @@ impl FromStr for ParsedSeconds {
     }
 }
 
-/// The primary action to perform.
 #[derive(Clone, Copy, Default)]
 pub(crate) enum Action {
-    /// Run benchmark loops.
     #[default]
     Bench,
 
-    /// Run benchmarked functions once to ensure they run successfully.
     Test,
 
-    /// List benchmarks.
     List,
 
-    /// List benchmarks in the style of `cargo test --list --format terse`.
-    ///
-    /// This only applies when running under `cargo-nextest` (`NEXTEST=1`).
     ListTerse,
 }
 
@@ -58,17 +50,13 @@ impl Action {
     }
 }
 
-/// How to treat benchmarks based on whether they're marked as `#[ignore]`.
 #[derive(Copy, Clone, Default)]
 pub(crate) enum RunIgnored {
-    /// Skip ignored.
     #[default]
     No,
 
-    /// `--include-ignored`.
     Yes,
 
-    /// `--ignored`.
     Only,
 }
 
@@ -90,23 +78,17 @@ impl RunIgnored {
     }
 }
 
-/// The attribute to sort benchmarks by.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum SortingAttr {
-    /// Sort by kind, then by name and location.
     #[default]
     Kind,
 
-    /// Sort by name, then by location and kind.
     Name,
 
-    /// Sort by location, then by kind and name.
     Location,
 }
 
 impl SortingAttr {
-    /// Returns an array containing `self` along with other attributes that
-    /// should break ties if attributes are equal.
     pub fn with_tie_breakers(self) -> [Self; 3] {
         use SortingAttr::*;
 
@@ -117,30 +99,23 @@ impl SortingAttr {
         }
     }
 
-    /// Compares benchmark runtime argument names.
-    ///
-    /// This takes `&&str` to handle `SortingAttr::Location` since the strings
-    /// are considered to be within the same `&[&str]`.
     pub fn cmp_bench_arg_names(self, a: &&str, b: &&str) -> Ordering {
         for attr in self.with_tie_breakers() {
             let ordering = match attr {
                 SortingAttr::Kind => Ordering::Equal,
 
                 SortingAttr::Name => 'ordering: {
-                    // Compare as integers.
                     match (a.parse::<u128>(), a.parse::<u128>()) {
                         (Ok(a_u128), Ok(b_u128)) => break 'ordering a_u128.cmp(&b_u128),
 
                         (Ok(_), Err(_)) => {
                             if b.parse::<i128>().is_ok() {
-                                // a > b, because b is negative.
                                 break 'ordering Ordering::Greater;
                             }
                         }
 
                         (Err(_), Ok(_)) => {
                             if a.parse::<i128>().is_ok() {
-                                // a < b, because a is negative.
                                 break 'ordering Ordering::Less;
                             }
                         }
@@ -153,7 +128,6 @@ impl SortingAttr {
                         }
                     }
 
-                    // Compare as floats.
                     if let (Ok(a), Ok(b)) = (a.parse::<f64>(), b.parse::<f64>())
                         && let Some(ordering) = a.partial_cmp(&b)
                     {

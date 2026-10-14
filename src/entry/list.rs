@@ -29,7 +29,6 @@ impl<T> EntryList<T> {
     }
 }
 
-// Externally used by macros or tests.
 #[allow(missing_docs)]
 impl<T> EntryList<T> {
     #[inline]

@@ -156,7 +156,6 @@ impl BytesCount {
     #[inline]
     #[doc(alias = "size_of_val")]
     pub fn of_val<T: ?Sized>(val: &T) -> Self {
-        // TODO: Make const, https://github.com/rust-lang/rust/issues/46571
         Self {
             count: size_of_val(val) as MaxCountUInt,
         }

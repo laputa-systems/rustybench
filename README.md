@@ -1,7 +1,7 @@
 # rustybench
 
-A small Rust benchmark runner for macOS and Linux. Cargo declares Rust 1.100
-as the minimum supported version.
+A small Rust benchmark runner for macOS and Linux. Rustybench requires nightly
+Rust 1.100 or newer; the repository pins `nightly-2026-09-15`.
 
 ## Install and run
 

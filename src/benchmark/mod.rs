@@ -419,7 +419,6 @@ where
         B: Fn(&mut I) -> O + Sync,
         GenI: Fn() -> I + Sync,
     {
-        // TODO: Allow `O` to reference `&mut I` as long as `I` outlives `O`.
         self.context.bench_loop_threaded(
             self.config.gen_input,
             |input| {
@@ -464,7 +463,6 @@ where
     where
         B: FnMut(&mut I) -> O,
     {
-        // TODO: Allow `O` to reference `&mut I` as long as `I` outlives `O`.
         self.context.bench_loop_local(
             self.config.gen_input,
             |input| {
@@ -773,13 +771,6 @@ impl<'a> BenchContext<'a> {
             let slowest_sample = raw_samples.iter().max_by_key(|s| s.duration()).unwrap();
             let slowest_time = slowest_sample.duration();
 
-            // TODO: Make tuning be less influenced by early runs. Currently if
-            // early runs are very quick but later runs are slow, benchmarking
-            // will take a very long time.
-            //
-            // TODO: Make `sample_size` consider time generating inputs and
-            // dropping inputs/outputs. Currently benchmarks like
-            // `Bencher::bench_refs(String::clear)` take a very long time.
             if current_mode.is_tune() {
                 // Clear previous smaller samples.
                 self.samples.clear();
@@ -1359,8 +1350,6 @@ impl<'a> BenchContext<'a> {
                             / sample_size,
                     }
                 },
-                // TODO: Switch to median of alloc info itself, rather than
-                // basing off of median times.
                 median: {
                     let alloc_info_for_median =
                         |index| sample_alloc_info(median_samples.get(index).copied());

@@ -25,7 +25,7 @@ pub mod __private;
 mod util;
 
 mod alloc;
-mod benchmark; // NOTE: "bench" would be imported into the prelude.
+mod benchmark;
 mod cli;
 mod compile_fail;
 mod config;

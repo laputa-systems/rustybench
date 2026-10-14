@@ -40,7 +40,6 @@ impl fmt::Display for FineDuration {
             10_u128.saturating_pow(sig_figs)
         };
 
-        // TODO: Format without heap allocation.
         let mut str: String = match picos::DAY.checked_mul(multiple) {
             Some(int_day) if picos >= int_day => {
                 // Format using integer representation to not lose precision.

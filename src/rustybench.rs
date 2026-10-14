@@ -33,12 +33,9 @@ pub struct Rustybench {
     bench_options: BenchOptions<'static>,
 }
 
-/// Context shared across all benchmarks.
 pub(crate) struct SharedContext {
-    /// The specific action being performed.
     pub action: Action,
 
-    /// Pre-spawned pool of threads for running benchmarks on.
     pub thread_pool: ThreadPool,
 }
 
@@ -107,23 +104,18 @@ impl Rustybench {
             EntryTree::insert_group(&mut tree, group);
         }
 
-        // Filter after inserting groups so that we can properly use groups'
-        // display names.
         EntryTree::retain(&mut tree, |entry_path| self.filter(entry_path));
 
-        // Quick exit without doing unnecessary work.
         if tree.is_empty() {
             return;
         }
 
         // When run under `cargo-nextest`, it provides `--list --format terse`.
-        // We don't currently accept this action under any other circumstances.
         if action.is_list_terse() {
             self.run_tree_list(&tree, "");
             return;
         }
 
-        // Sorting is after filtering to compare fewer elements.
         EntryTree::sort_by_attr(&mut tree, self.sorting_attr, self.reverse_sort);
 
         if action.is_bench() {
@@ -138,7 +130,6 @@ impl Rustybench {
         let column_widths = if action.is_bench() {
             TreeColumn::ALL.map(|column| {
                 if column.is_last() {
-                    // The last column doesn't use padding.
                     0
                 } else {
                     EntryTree::common_column_width(&tree, column)
@@ -173,9 +164,6 @@ impl Rustybench {
         }
     }
 
-    /// Emits the entries in `tree` for the purpose of `--list --format terse`.
-    ///
-    /// This only happens when running under `cargo-nextest` (`NEXTEST=1`).
     fn run_tree_list(&self, tree: &[EntryTree], parent_path: &str) {
         let mut full_path = String::with_capacity(parent_path.len());
 
@@ -231,7 +219,6 @@ impl Rustybench {
 
             let child_options = child.bench_options();
 
-            // Overwrite `parent_options` with `child_options` if applicable.
             let options: BenchOptions;
             let options: Option<&BenchOptions> = match (parent_options, child_options) {
                 (None, None) => None,
@@ -290,7 +277,6 @@ impl Rustybench {
         let entry_display_name = bench_entry.display_name();
         let report_prefix = join_path(parent_path, entry_display_name);
 
-        // User runtime options override all other options.
         let options: BenchOptions;
         let options: &BenchOptions = match entry_options {
             None => &self.bench_options,
@@ -307,7 +293,6 @@ impl Rustybench {
             return;
         }
 
-        // Paint empty leaf when simply listing.
         if action.is_list() {
             let mut tree_painter = tree_painter.borrow_mut();
             tree_painter.start_leaf(entry_display_name, is_last_entry);
@@ -335,7 +320,6 @@ impl Rustybench {
             &thread_counts
         };
 
-        // Whether we should emit child branches for thread counts.
         let has_thread_branches = thread_counts.len() > 1;
 
         let mut run_bench = |bench_display_name: &str,
@@ -466,7 +450,6 @@ impl Rustybench {
         };
         let is_exact = options.exact;
 
-        // Insert filters.
         {
             let parse_filter = |filter: String| -> Filter {
                 if is_exact {
@@ -482,7 +465,6 @@ impl Rustybench {
             let inclusive_filters = options.filters;
             let exclusive_filters = options.skips;
 
-            // Reduce allocation size and reallocation count.
             self.filters.reserve_exact({
                 let inclusive_count = inclusive_filters.len();
                 let exclusive_count = exclusive_filters.len();

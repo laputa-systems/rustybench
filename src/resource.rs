@@ -14,7 +14,6 @@ use miniserde::{Deserialize, Serialize};
 #[cfg(target_os = "linux")]
 const PROC_FILE_LIMIT: usize = 64 * 1024;
 
-/// Whether a resource measurement can be interpreted on the current host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum ResourceStatus {
     #[serde(rename = "supported")]
@@ -25,7 +24,6 @@ pub(crate) enum ResourceStatus {
     NotApplicable,
 }
 
-/// A process memory snapshot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct MemorySnapshot {
     pub status: ResourceStatus,
@@ -53,7 +51,6 @@ impl MemorySnapshot {
     }
 }
 
-/// One process-resource snapshot, before and after a timed sample.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ProcessResourceSnapshot {
     pub status: ResourceStatus,
@@ -66,7 +63,6 @@ pub(crate) struct ProcessResourceSnapshot {
     pub memory: MemorySnapshot,
 }
 
-/// Resource deltas and the post-sample memory snapshot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ProcessResourceDelta {
     pub status: ResourceStatus,
@@ -99,7 +95,6 @@ pub(crate) struct ProcessResourceMetrics {
 }
 
 impl ProcessResourceSnapshot {
-    /// Takes one bounded process-resource snapshot.
     pub(crate) fn capture() -> Self {
         #[cfg(target_os = "linux")]
         let usage = process_usage();
@@ -137,8 +132,6 @@ impl ProcessResourceSnapshot {
         }
     }
 
-    /// Takes a snapshot without charging procfs parsing allocations to the
-    /// benchmark's allocation profile.
     pub(crate) fn capture_unprofiled() -> Self {
         let was_ignored = crate::alloc::IGNORE_ALLOC.get();
         crate::alloc::IGNORE_ALLOC.set(true);
@@ -149,7 +142,6 @@ impl ProcessResourceSnapshot {
 }
 
 impl ProcessResourceDelta {
-    /// Computes monotonic counter deltas and retains the post-sample memory.
     pub(crate) fn between(before: ProcessResourceSnapshot, after: ProcessResourceSnapshot) -> Self {
         let status = match (before.status, after.status) {
             (ResourceStatus::Supported, ResourceStatus::Supported) => ResourceStatus::Supported,

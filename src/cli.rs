@@ -7,7 +7,6 @@ use crate::{
     counter::{BytesFormat, MaxCountUInt},
 };
 
-/// The output format requested from the benchmark runner.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum OutputFormat {
     #[default]
@@ -16,7 +15,6 @@ pub(crate) enum OutputFormat {
     Json,
 }
 
-/// Arguments accepted by the benchmark executable.
 #[derive(Debug, Default)]
 pub(crate) struct Options {
     pub filters: Vec<String>,
@@ -165,7 +163,6 @@ fn help() {
     );
 }
 
-/// Parses benchmark arguments without allocating a command-definition graph.
 pub(crate) fn parse() -> Result<Options, lexopt::Error> {
     parse_with_env(Parser::from_env(), &|name| env::var_os(name))
 }

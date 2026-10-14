@@ -8,7 +8,6 @@ pub(crate) struct CounterCollection {
 
 #[derive(Default)]
 struct KnownCounterInfo {
-    // TODO: Inlinable vector.
     counts: Vec<MaxCountUInt>,
 
     /// `BencherConfig::with_inputs` can only be called once, so the input type

@@ -6,8 +6,6 @@ use crate::{
     time::{FineDuration, Timestamp},
 };
 
-/// Returns the smallest non-zero duration that the operating-system timer can
-/// measure. The result is cached.
 pub(crate) fn timer_precision() -> FineDuration {
     static CACHED: OnceLock<FineDuration> = OnceLock::new();
 
@@ -15,13 +13,9 @@ pub(crate) fn timer_precision() -> FineDuration {
 }
 
 fn measure_precision() -> FineDuration {
-    // Start with the worst possible minimum.
     let mut min_sample = FineDuration::MAX;
     let mut seen_count = 0;
 
-    // If timing in immediate succession fails to produce a non-zero sample,
-    // an artificial delay is added by looping. `usize` is intentionally
-    // used to make looping cheap.
     let mut delay_len: usize = 0;
 
     loop {
@@ -30,11 +24,9 @@ fn measure_precision() -> FineDuration {
             let sample_end: Timestamp;
 
             if delay_len == 0 {
-                // Immediate succession.
                 sample_start = Timestamp::start();
                 sample_end = Timestamp::end();
             } else {
-                // Add delay.
                 sample_start = Timestamp::start();
                 for n in 0..delay_len {
                     crate::black_box(n);
@@ -44,15 +36,12 @@ fn measure_precision() -> FineDuration {
 
             let sample = sample_end.duration_since(sample_start);
 
-            // Discard sample if irrelevant.
             if sample.is_zero() {
                 continue;
             }
 
             match sample.cmp(&min_sample) {
                 Ordering::Greater => {
-                    // If we already delayed a lot, and not hit the seen
-                    // count threshold, then use current minimum.
                     if delay_len > 100 {
                         return min_sample;
                     }
@@ -60,8 +49,6 @@ fn measure_precision() -> FineDuration {
                 Ordering::Equal => {
                     seen_count += 1;
 
-                    // If we've seen this min 100 times, we have high
-                    // confidence this is the smallest duration.
                     if seen_count >= 100 {
                         return min_sample;
                     }
@@ -77,9 +64,6 @@ fn measure_precision() -> FineDuration {
     }
 }
 
-/// Returns the overheads added by the benchmarker.
-///
-/// `min_time` and `max_time` do not consider this as benchmarking time.
 pub(crate) fn bench_overheads() -> &'static TimedOverhead {
     static CACHED: OnceLock<TimedOverhead> = OnceLock::new();
 
@@ -91,19 +75,16 @@ pub(crate) fn bench_overheads() -> &'static TimedOverhead {
     })
 }
 
-/// Returns the per-iteration overhead of the benchmarking sample loop.
 fn sample_loop_overhead() -> FineDuration {
     static CACHED: OnceLock<FineDuration> = OnceLock::new();
 
     *CACHED.get_or_init(measure_sample_loop_overhead)
 }
 
-/// Calculates the per-iteration overhead of the benchmarking sample loop.
 fn measure_sample_loop_overhead() -> FineDuration {
     let sample_count: usize = 100;
     let sample_size: usize = 10_000;
 
-    // The minimum non-zero sample.
     let mut min_sample = FineDuration::default();
 
     for _ in 0..sample_count {
@@ -143,7 +124,6 @@ fn measure_tally_realloc_overhead() -> FineDuration {
 // SAFETY: This function is not reentrant. Calling it within `operation`
 // would cause aliasing of `ThreadAllocInfo::current`.
 fn measure_alloc_info_overhead(operation: impl Fn(&mut ThreadAllocInfo)) -> FineDuration {
-    // Initialize the current thread's alloc info.
     let alloc_info = ThreadAllocInfo::current();
 
     let sample_count = 100;
@@ -156,7 +136,6 @@ fn measure_alloc_info_overhead(operation: impl Fn(&mut ThreadAllocInfo)) -> Fine
         }
     });
 
-    // Clear alloc info.
     if let Some(mut alloc_info) = alloc_info {
         // SAFETY: We have exclusive access.
         let alloc_info = unsafe { alloc_info.as_mut() };
@@ -167,7 +146,6 @@ fn measure_alloc_info_overhead(operation: impl Fn(&mut ThreadAllocInfo)) -> Fine
     result
 }
 
-/// Calculates the smallest non-zero time to perform an operation.
 fn measure_min_time(sample_count: usize, sample_size: usize, operation: impl Fn()) -> FineDuration {
     let loop_overhead = sample_loop_overhead();
     let mut min_sample = FineDuration::default();
@@ -184,7 +162,6 @@ fn measure_min_time(sample_count: usize, sample_size: usize, operation: impl Fn(
         let mut sample = end.duration_since(start);
         sample.picos /= sample_size as u128;
 
-        // Remove benchmarking loop overhead.
         sample.picos = sample.picos.saturating_sub(loop_overhead.picos);
 
         min_sample = min_sample.clamp_to_min(sample);
@@ -193,7 +170,6 @@ fn measure_min_time(sample_count: usize, sample_size: usize, operation: impl Fn(
     min_sample
 }
 
-/// The measured overhead of various benchmarking operations.
 pub(crate) struct TimedOverhead {
     pub sample_loop: FineDuration,
     pub tally_alloc: FineDuration,

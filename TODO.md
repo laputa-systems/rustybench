@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-7 · P2 · Clear input counters when setting a static counter
-
-- **Area:** Types
-- **Where:** `src/counter/collection.rs:43-56,64-80`, `src/benchmark/mod.rs:822-835,1234-1244`
-- **Problem:** `set_input_counter` clears static values, but `set_counter` leaves an existing input counter closure installed. Chaining an input counter and then a static counter of the same kind keeps input-based indexing enabled; the static value shifts the input sample counts and produces incorrect report values.
-- **Recommendation:** Make setting either counter source clear the other source for that counter kind.
-- **Fix with:** `make-invalid-states-unrepresentable`
-- **Effort:** S (hours)
-
 ### RUST-8 · P2 · Keep resource snapshots from suppressing worker allocation samples
 
 - **Area:** Concurrency

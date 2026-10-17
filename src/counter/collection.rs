@@ -10,9 +10,21 @@ pub(crate) struct CounterCollection {
 struct KnownCounterInfo {
     counts: Vec<MaxCountUInt>,
 
+    source: CounterSource,
+}
+
+/// What produces a counter kind's counts.
+#[derive(Default)]
+enum CounterSource {
+    /// A single constant count used for every sample.
+    #[default]
+    Static,
+
+    /// A count computed from each sample's input.
+    ///
     /// `BencherConfig::with_inputs` can only be called once, so the input type
     /// cannot change.
-    count_input: Option<Box</* unsafe */ dyn Fn(*const ()) -> MaxCountUInt + Sync>>,
+    Input(Box</* unsafe */ dyn Fn(*const ()) -> MaxCountUInt + Sync>),
 }
 
 impl CounterCollection {
@@ -41,18 +53,15 @@ impl CounterCollection {
 
     #[inline]
     pub(crate) fn uses_input_counts(&self, counter_kind: KnownCounterKind) -> bool {
-        self.info(counter_kind).count_input.is_some()
+        matches!(self.info(counter_kind).source, CounterSource::Input(_))
     }
 
     pub(crate) fn set_counter(&mut self, counter: AnyCounter) {
-        let new_count = counter.count();
         let info = self.info_mut(counter.known_kind());
 
-        if let Some(old_count) = info.counts.first_mut() {
-            *old_count = new_count;
-        } else {
-            info.counts.push(new_count);
-        }
+        info.counts.clear();
+        info.counts.push(counter.count());
+        info.source = CounterSource::Static;
     }
 
     pub(crate) fn push_counter(&mut self, counter: AnyCounter) {
@@ -72,7 +81,7 @@ impl CounterCollection {
         // Ignore previously-set counts.
         info.counts.clear();
 
-        info.count_input = Some(Box::new(move |input: *const ()| {
+        info.source = CounterSource::Input(Box::new(move |input: *const ()| {
             // SAFETY: Callers to `get_input_count` guarantee that the same `&I`
             // is passed.
             let counter = unsafe { make_counter(&*input.cast::<I>()) };
@@ -92,7 +101,9 @@ impl CounterCollection {
         counter_kind: KnownCounterKind,
         input: &I,
     ) -> Option<MaxCountUInt> {
-        let from_input = self.info(counter_kind).count_input.as_ref()?;
+        let CounterSource::Input(from_input) = &self.info(counter_kind).source else {
+            return None;
+        };
 
         // SAFETY: The caller ensures that this is called on the same input type
         // used for calling `set_input_counter`.
@@ -102,7 +113,7 @@ impl CounterCollection {
     /// Removes counts that came from input.
     pub(crate) fn clear_input_counts(&mut self) {
         for info in &mut self.info {
-            if info.count_input.is_some() {
+            if matches!(info.source, CounterSource::Input(_)) {
                 info.counts.clear();
             }
         }
@@ -142,8 +153,54 @@ impl CounterSet {
         CounterCollection {
             info: KnownCounterKind::ALL.map(|kind| KnownCounterInfo {
                 counts: self.get(kind).into_iter().collect(),
-                count_input: None,
+                source: CounterSource::Static,
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::counter::ItemsCount;
+
+    #[test]
+    fn static_counter_replaces_input_counter() {
+        let mut counters = CounterCollection::default();
+
+        counters.set_input_counter::<String, ItemsCount, _>(|s| ItemsCount::new(s.len()));
+        assert!(counters.uses_input_counts(KnownCounterKind::Items));
+
+        let input = String::from("abcd");
+        assert_eq!(
+            unsafe { counters.get_input_count::<String>(KnownCounterKind::Items, &input) },
+            Some(4)
+        );
+
+        counters.set_counter(AnyCounter::new(ItemsCount::new(7usize)));
+
+        assert!(!counters.uses_input_counts(KnownCounterKind::Items));
+        assert_eq!(counters.counts(KnownCounterKind::Items), [7]);
+        assert_eq!(
+            unsafe { counters.get_input_count::<String>(KnownCounterKind::Items, &input) },
+            None
+        );
+    }
+
+    #[test]
+    fn input_counter_replaces_static_counter() {
+        let mut counters = CounterCollection::default();
+
+        counters.set_counter(AnyCounter::new(ItemsCount::new(7usize)));
+        counters.set_input_counter::<String, ItemsCount, _>(|s| ItemsCount::new(s.len()));
+
+        assert!(counters.uses_input_counts(KnownCounterKind::Items));
+        assert!(counters.counts(KnownCounterKind::Items).is_empty());
+
+        let input = String::from("abcd");
+        assert_eq!(
+            unsafe { counters.get_input_count::<String>(KnownCounterKind::Items, &input) },
+            Some(4)
+        );
     }
 }

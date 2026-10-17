@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-12 · P3 · Capture process counters before releasing sample workers
-
-- **Area:** Data
-- **Where:** `src/benchmark/mod.rs:965-972,1015-1018`
-- **Problem:** With syscall markers disabled, the process-resource start snapshot is taken after the second start-barrier wait releases workers. A worker can begin its timed sample before the snapshot, so process-wide CPU and fault deltas omit part of the work for multithreaded samples.
-- **Recommendation:** Take the start snapshot at the shared boundary before releasing workers, regardless of syscall-marker configuration.
-- **Fix with:** `isolate-effects`
-- **Effort:** M (days)
-
 ### RUST-13 · P3 · Verify LLVM archives before extracting them in Docker
 
 - **Area:** Security

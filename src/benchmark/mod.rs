@@ -974,8 +974,6 @@ impl<'a> BenchContext<'a> {
     {
         #[cfg(target_os = "linux")]
         let syscall_markers_enabled = std::env::var_os("RUSTYBENCH_SYSCALL_TRACE").is_some();
-        #[cfg(not(target_os = "linux"))]
-        let syscall_markers_enabled = false;
 
         #[cfg(target_os = "linux")]
         let original_task_name = syscall_markers_enabled.then(|| {
@@ -1050,8 +1048,9 @@ impl<'a> BenchContext<'a> {
                 if is_start {
                     let resource_start = on_boundary.and_then(|on_boundary| on_boundary());
 
-                    // The start marker precedes the release barrier, so all
-                    // workers' benchmark calls remain inside the trace.
+                    // The start snapshot and marker precede the release
+                    // barrier, so all workers' benchmark calls fall inside the
+                    // measured interval and the syscall trace.
                     if let Some(barrier) = barrier {
                         barrier.wait();
                     }
@@ -1066,44 +1065,42 @@ impl<'a> BenchContext<'a> {
 
             #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
             let mut sync_threads = |is_start: bool| {
-                let on_boundary = (thread_index == 0 && syscall_markers_enabled).then(|| || {
-                    #[cfg(target_os = "linux")]
-                    {
-                        if is_start {
-                            // Keep process-resource reads outside the syscall
-                            // interval before releasing workers into the sample.
-                            let resource_start = ProcessResourceSnapshot::capture_unprofiled();
+                let on_boundary = (thread_index == 0).then(|| || {
+                    if is_start {
+                        // Capture the start snapshot before the release
+                        // barrier so every worker's sample falls inside the
+                        // measured interval.
+                        let resource_start = ProcessResourceSnapshot::capture_unprofiled();
+
+                        #[cfg(target_os = "linux")]
+                        if syscall_markers_enabled {
                             syscall_marker_error = syscall_marker::begin().err();
                             syscall_marker_started = syscall_marker_error.is_none();
-                            return Some(resource_start);
                         }
 
-                        if syscall_marker_started {
-                            if let Err(error) = syscall_marker::end() {
-                                syscall_marker_error = Some(error);
-                            }
+                        return Some(resource_start);
+                    }
 
-                            if let Err(error) = syscall_marker::restore(
-                                original_task_name
-                                    .as_ref()
-                                    .expect("syscall tracing saved the original Linux task name"),
-                            ) {
-                                if syscall_marker_error.is_none() {
-                                    syscall_marker_error = Some(error);
-                                }
+                    #[cfg(target_os = "linux")]
+                    if syscall_markers_enabled && syscall_marker_started {
+                        if let Err(error) = syscall_marker::end() {
+                            syscall_marker_error = Some(error);
+                        }
+
+                        if let Err(error) = syscall_marker::restore(
+                            original_task_name
+                                .as_ref()
+                                .expect("syscall tracing saved the original Linux task name"),
+                        ) {
+                            if syscall_marker_error.is_none() {
+                                syscall_marker_error = Some(error);
                             }
                         }
                     }
 
                     None
                 });
-                let resource_start = sync_impl(barrier, is_start, on_boundary);
-
-                if is_start && thread_index == 0 && !syscall_markers_enabled {
-                    Some(ProcessResourceSnapshot::capture_unprofiled())
-                } else {
-                    resource_start
-                }
+                sync_impl(barrier, is_start, on_boundary)
             };
 
             // The following logic chooses how to efficiently sample the

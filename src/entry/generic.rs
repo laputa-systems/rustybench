@@ -42,13 +42,21 @@ impl GenericBenchEntry {
         }
     }
 
-    pub(crate) fn path_components(&self) -> impl Iterator<Item = &str> {
-        let module_path = self.group.meta.module_path_components();
+    pub(crate) fn path_components(&self) -> impl Iterator<Item = PathComponent> {
+        let module_path = self
+            .group
+            .meta
+            .module_path_components()
+            .map(PathComponent::name);
 
-        let group_component = self.group.meta.raw_name;
+        let group_component = PathComponent::name(self.group.meta.raw_name);
 
         let type_component = if self.const_value.is_some() {
-            self.ty.as_ref().map(|ty| ty.display_name())
+            self.ty.as_ref().map(|ty| PathComponent {
+                identity: PathIdentity::Type(ty.type_id()),
+                raw_name: ty.raw_name(),
+                display_name: Some(ty.display_name()),
+            })
         } else {
             None
         };
@@ -59,11 +67,32 @@ impl GenericBenchEntry {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PathIdentity {
+    Name(&'static str),
+    Type(TypeId),
+}
+
+pub(crate) struct PathComponent {
+    pub identity: PathIdentity,
+    pub raw_name: &'static str,
+    pub display_name: Option<&'static str>,
+}
+
+impl PathComponent {
+    pub(crate) fn name(name: &'static str) -> Self {
+        Self {
+            identity: PathIdentity::Name(name),
+            raw_name: name,
+            display_name: None,
+        }
+    }
+}
+
 /// Type identity and names for a generic benchmark.
 pub struct EntryType {
     get_type_name: fn() -> &'static str,
 
-    #[allow(dead_code)]
     get_type_id: fn() -> TypeId,
 }
 
@@ -74,6 +103,10 @@ impl EntryType {
             get_type_name: std::any::type_name::<T>,
             get_type_id: TypeId::of::<T>,
         }
+    }
+
+    pub(crate) fn type_id(&self) -> TypeId {
+        (self.get_type_id)()
     }
 
     pub(crate) fn raw_name(&self) -> &'static str {

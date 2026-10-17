@@ -101,6 +101,94 @@ fn generic_type_with_arrow<T>() {
     let _ = std::marker::PhantomData::<T>;
 }
 
+mod collision_a {
+    pub struct Widget;
+}
+
+mod collision_b {
+    pub struct Widget;
+}
+
+#[crate::bench(
+    crate = crate,
+    ignore,
+    types = [collision_a::Widget, collision_b::Widget],
+    consts = [1u8, 2u8]
+)]
+fn colliding_consts<T, const N: u8>() {}
+
+#[crate::bench(
+    crate = crate,
+    ignore,
+    types = [collision_a::Widget, collision_b::Widget]
+)]
+fn colliding_types<T>() {}
+
+fn tree_paths() -> Vec<String> {
+    use crate::entry::{AnyBenchEntry, EntryTree};
+
+    let generic = crate::entry::GROUP_ENTRIES
+        .iter()
+        .flat_map(|group| group.generic_benches_iter().map(AnyBenchEntry::GenericBench));
+    let benches = crate::entry::BENCH_ENTRIES
+        .iter()
+        .map(AnyBenchEntry::Bench)
+        .chain(generic);
+
+    let tree = EntryTree::from_benches(benches);
+
+    fn collect(tree: &[EntryTree], parent: &str, out: &mut Vec<String>) {
+        for node in tree {
+            let path = if parent.is_empty() {
+                node.display_name().to_owned()
+            } else {
+                format!("{parent}::{}", node.display_name())
+            };
+
+            match node {
+                EntryTree::Leaf { .. } => out.push(path),
+                EntryTree::Parent { children, .. } => collect(children, &path, out),
+            }
+        }
+    }
+
+    let mut paths = Vec::new();
+    collect(&tree, "", &mut paths);
+    paths
+}
+
+#[test]
+fn generic_type_collisions_produce_distinct_paths() {
+    let paths = tree_paths();
+
+    let mut colliding: Vec<&String> = paths
+        .iter()
+        .filter(|path| path.contains("colliding_consts") || path.contains("colliding_types"))
+        .collect();
+    colliding.sort();
+
+    assert_eq!(
+        colliding.len(),
+        6,
+        "expected six colliding benchmark paths: {colliding:#?}"
+    );
+
+    let mut deduped = colliding.clone();
+    deduped.dedup();
+    assert_eq!(deduped, colliding, "colliding paths are not distinct");
+
+    assert!(
+        colliding
+            .iter()
+            .any(|path| path.contains("collision_a::Widget"))
+    );
+    assert!(
+        colliding
+            .iter()
+            .any(|path| path.contains("collision_b::Widget"))
+    );
+}
+
 fn find_bench(raw_name: &str) -> &'static crate::__private::BenchEntry {
     BENCH_ENTRIES
         .iter()

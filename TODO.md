@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-5 · P2 · Preserve generic type identity in benchmark paths
-
-- **Area:** Navigability
-- **Where:** `src/entry/generic.rs:45-59,83-94`, `src/entry/tree.rs:12-24,26-48`
-- **Problem:** Generic type parents are keyed by `display_name`, which strips module components from type names. Distinct types with the same short name therefore share one tree parent and can produce ambiguous or collapsed benchmark paths.
-- **Recommendation:** Keep type identity separate from its display label and disambiguate colliding paths.
-- **Fix with:** `api-surface-and-module-boundaries`
-- **Effort:** M (days)
-
 ### RUST-6 · P2 · Release parallel benchmark workers after a panic
 
 - **Area:** Concurrency

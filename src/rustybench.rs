@@ -230,7 +230,7 @@ impl Rustybench {
             };
 
             match child {
-                EntryTree::Leaf { entry, args } => self.run_bench_entry(
+                EntryTree::Leaf { entry, args, .. } => self.run_bench_entry(
                     action,
                     *entry,
                     args.as_deref(),

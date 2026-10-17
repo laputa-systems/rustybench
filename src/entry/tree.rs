@@ -9,9 +9,13 @@ use crate::{
     util::sort::natural_cmp,
 };
 
+use super::generic::{PathComponent, PathIdentity};
+
 pub(crate) enum EntryTree<'a> {
     Parent {
+        identity: PathIdentity,
         raw_name: &'a str,
+        display_name: Option<&'a str>,
         group: Option<&'a GroupEntry>,
         children: Vec<Self>,
     },
@@ -20,6 +24,8 @@ pub(crate) enum EntryTree<'a> {
         entry: AnyBenchEntry<'a>,
 
         args: Option<Vec<&'static &'static str>>,
+
+        display_name: Option<&'a str>,
     },
 }
 
@@ -31,19 +37,18 @@ impl<'a> EntryTree<'a> {
         let mut result = Vec::<Self>::new();
 
         for bench in benches {
-            let mut insert_entry = |path_iter| {
-                Self::insert_entry(&mut result, bench, path_iter);
-            };
-
             match bench {
-                AnyBenchEntry::Bench(bench) => {
-                    insert_entry(&mut bench.meta.module_path_components());
+                AnyBenchEntry::Bench(entry) => {
+                    let components = entry.meta.module_path_components().map(PathComponent::name);
+                    Self::insert_entry(&mut result, bench, components);
                 }
-                AnyBenchEntry::GenericBench(bench) => {
-                    insert_entry(&mut bench.path_components());
+                AnyBenchEntry::GenericBench(entry) => {
+                    Self::insert_entry(&mut result, bench, entry.path_components());
                 }
             }
         }
+
+        Self::disambiguate(&mut result);
 
         result
     }
@@ -110,8 +115,10 @@ impl<'a> EntryTree<'a> {
             for subtree in tree {
                 match subtree {
                     EntryTree::Parent {
-                        raw_name, children, ..
-                    } if component == *raw_name => {
+                        identity: PathIdentity::Name(name),
+                        children,
+                        ..
+                    } if component == *name => {
                         tree = children;
                         continue 'component;
                     }
@@ -122,13 +129,15 @@ impl<'a> EntryTree<'a> {
             return;
         }
 
+        let identity = PathIdentity::Name(group.meta.raw_name);
+
         for subtree in tree {
             match subtree {
                 EntryTree::Parent {
-                    raw_name,
+                    identity: node_identity,
                     group: slot,
                     ..
-                } if group.meta.raw_name == *raw_name => {
+                } if *node_identity == identity => {
                     *slot = Some(group);
                     return;
                 }
@@ -236,51 +245,58 @@ impl<'a> EntryTree<'a> {
     fn insert_entry(
         tree: &mut Vec<Self>,
         entry: AnyBenchEntry<'a>,
-        rem_modules: &mut dyn Iterator<Item = &'a str>,
+        mut components: impl Iterator<Item = PathComponent>,
     ) {
-        let Some(current_module) = rem_modules.next() else {
+        let Some(component) = components.next() else {
             tree.push(Self::Leaf {
                 entry,
                 args: entry.arg_names().map(|args| args.iter().collect()),
+                display_name: None,
             });
             return;
         };
 
-        let Some(children) = Self::get_children(tree, current_module) else {
-            tree.push(Self::from_path(entry, current_module, rem_modules));
+        let Some(children) = Self::get_children(tree, component.identity) else {
+            tree.push(Self::from_path(entry, component, components));
             return;
         };
 
-        Self::insert_entry(children, entry, rem_modules);
+        Self::insert_entry(children, entry, components);
     }
 
     fn from_path(
         entry: AnyBenchEntry<'a>,
-        current_module: &'a str,
-        rem_modules: &mut dyn Iterator<Item = &'a str>,
+        component: PathComponent,
+        mut components: impl Iterator<Item = PathComponent>,
     ) -> Self {
-        let child = if let Some(next_module) = rem_modules.next() {
-            Self::from_path(entry, next_module, rem_modules)
+        let child = if let Some(next) = components.next() {
+            Self::from_path(entry, next, components)
         } else {
             Self::Leaf {
                 entry,
                 args: entry.arg_names().map(|args| args.iter().collect()),
+                display_name: None,
             }
         };
         Self::Parent {
-            raw_name: current_module,
+            identity: component.identity,
+            raw_name: component.raw_name,
+            display_name: component.display_name,
             group: None,
             children: vec![child],
         }
     }
 
-    fn get_children<'t>(tree: &'t mut [Self], module: &str) -> Option<&'t mut Vec<Self>> {
+    fn get_children<'t>(
+        tree: &'t mut [Self],
+        identity: PathIdentity,
+    ) -> Option<&'t mut Vec<Self>> {
         tree.iter_mut().find_map(|tree| match tree {
             Self::Parent {
-                raw_name,
+                identity: node_identity,
                 children,
-                group: _,
-            } if *raw_name == module => Some(children),
+                ..
+            } if *node_identity == identity => Some(children),
             _ => None,
         })
     }
@@ -323,13 +339,86 @@ impl<'a> EntryTree<'a> {
     }
 
     pub fn display_name(&self) -> &'a str {
-        if let Self::Leaf { entry, .. } = self {
-            entry.display_name()
-        } else if let Some(common) = self.meta() {
-            common.display_name
-        } else {
-            let raw_name = self.raw_name();
-            raw_name.strip_prefix("r#").unwrap_or(raw_name)
+        match self {
+            Self::Parent {
+                display_name: Some(display_name),
+                ..
+            }
+            | Self::Leaf {
+                display_name: Some(display_name),
+                ..
+            } => display_name,
+
+            Self::Leaf { entry, .. } => entry.display_name(),
+
+            Self::Parent { .. } => {
+                if let Some(common) = self.meta() {
+                    common.display_name
+                } else {
+                    let raw_name = self.raw_name();
+                    raw_name.strip_prefix("r#").unwrap_or(raw_name)
+                }
+            }
+        }
+    }
+
+    fn disambiguate(tree: &mut [Self]) {
+        for node in tree.iter_mut() {
+            if let Self::Parent { children, .. } = node {
+                Self::disambiguate(children);
+            }
+        }
+
+        let mut collisions = Vec::new();
+
+        for (index, node) in tree.iter().enumerate() {
+            let Some(full_name) = node.type_identity_name() else {
+                continue;
+            };
+
+            let collides = tree.iter().enumerate().any(|(other_index, other)| {
+                other_index != index && other.display_name() == node.display_name()
+            });
+
+            if collides {
+                collisions.push((index, full_name));
+            }
+        }
+
+        for (index, full_name) in collisions {
+            tree[index].set_display_name(full_name);
+        }
+    }
+
+    fn type_identity_name(&self) -> Option<&'a str> {
+        match self {
+            Self::Parent {
+                display_name: Some(_),
+                raw_name,
+                ..
+            } => Some(raw_name),
+
+            Self::Leaf {
+                entry: AnyBenchEntry::GenericBench(entry),
+                display_name: None,
+                ..
+            } => match (&entry.ty, &entry.const_value) {
+                (Some(ty), None) => Some(ty.raw_name()),
+                _ => None,
+            },
+
+            _ => None,
+        }
+    }
+
+    fn set_display_name(&mut self, display_name: &'a str) {
+        match self {
+            Self::Parent {
+                display_name: slot, ..
+            }
+            | Self::Leaf {
+                display_name: slot, ..
+            } => *slot = Some(display_name),
         }
     }
 

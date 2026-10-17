@@ -1,4 +1,4 @@
-use proc_macro::{Delimiter, Group, Literal, TokenStream, TokenTree};
+use proc_macro::{Delimiter, Group, Literal, Punct, Spacing, TokenStream, TokenTree};
 use std::str::FromStr;
 
 pub fn parse(source: impl AsRef<str>) -> TokenStream {
@@ -33,18 +33,61 @@ pub fn group(token: &TokenTree, delimiter: Delimiter) -> Option<&Group> {
 pub fn split_top_level(tokens: &[TokenTree], delimiter: char) -> Vec<Vec<TokenTree>> {
     let mut result = Vec::new();
     let mut current = Vec::new();
+    let mut angles = 0usize;
 
-    for token in tokens {
-        if is_punct(token, delimiter) {
+    for (index, token) in tokens.iter().enumerate() {
+        if opens_generic(tokens, index) {
+            angles += 1;
+        } else if angles > 0 && closes_generic(tokens, index) {
+            angles -= 1;
+        } else if angles == 0 && is_punct(token, delimiter) {
             result.push(current);
             current = Vec::new();
-        } else {
-            current.push(token.clone());
+            continue;
         }
+        current.push(token.clone());
     }
 
     result.push(current);
     result
+}
+
+fn punct(token: &TokenTree) -> Option<&Punct> {
+    match token {
+        TokenTree::Punct(punct) => Some(punct),
+        _ => None,
+    }
+}
+
+fn opens_generic(tokens: &[TokenTree], index: usize) -> bool {
+    let Some(token) = punct(&tokens[index]) else {
+        return false;
+    };
+    if token.as_char() != '<' || token.spacing() != Spacing::Alone {
+        return false;
+    }
+    !matches!(
+        index.checked_sub(1).and_then(|prev| punct(&tokens[prev])),
+        Some(prev) if prev.as_char() == '<' && prev.spacing() == Spacing::Joint
+    )
+}
+
+fn closes_generic(tokens: &[TokenTree], index: usize) -> bool {
+    let Some(token) = punct(&tokens[index]) else {
+        return false;
+    };
+    if token.as_char() != '>' {
+        return false;
+    }
+    let continues_operator = index
+        .checked_sub(1)
+        .and_then(|prev| punct(&tokens[prev]))
+        .is_some_and(|prev| {
+            prev.spacing() == Spacing::Joint && matches!(prev.as_char(), '-' | '=')
+        });
+    let comparison = token.spacing() == Spacing::Joint
+        && matches!(tokens.get(index + 1).and_then(punct), Some(next) if next.as_char() == '=');
+    !continues_operator && !comparison
 }
 
 pub fn token_stream(tokens: impl IntoIterator<Item = TokenTree>) -> TokenStream {

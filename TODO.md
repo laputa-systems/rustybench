@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-4 · P2 · Parse commas inside generic benchmark types
-
-- **Area:** Architecture
-- **Where:** `macros/src/tokens.rs:33-47`, `macros/src/attr_options.rs:299`, `macros/src/lib.rs:363`
-- **Problem:** `split_top_level` treats every comma punctuation as a separator and does not track angle-bracket nesting. A macro input such as `types = [HashMap<u8, u8>]` is split into invalid type fragments; compiling a probe with this input fails.
-- **Recommendation:** Split only commas at the top-level delimiter nesting of the Rust type syntax.
-- **Fix with:** `api-surface-and-module-boundaries`
-- **Effort:** M (days)
-
 ### RUST-5 · P2 · Preserve generic type identity in benchmark paths
 
 - **Area:** Navigability

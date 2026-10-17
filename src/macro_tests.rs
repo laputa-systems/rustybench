@@ -1,5 +1,6 @@
 //! Focused macro/runner coverage kept in the library test binary.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
 use crate::{
@@ -69,6 +70,37 @@ mod metadata_group {
     mod nested_group {}
 }
 
+#[crate::bench(
+    crate = crate,
+    ignore,
+    types = [HashMap<u8, u8>, Vec<HashMap<u8, Vec<u8>>>]
+)]
+fn generic_types_with_nested_commas<T>() -> T
+where
+    T: Default,
+{
+    T::default()
+}
+
+#[crate::bench(
+    crate = crate,
+    ignore,
+    args = [Ok::<u8, u8>(1)]
+)]
+fn args_with_nested_comma_in_type(result: Result<u8, u8>) -> u8 {
+    result.unwrap_or(0)
+}
+
+#[crate::bench(crate = crate, ignore, consts = [1 << 3, 2])]
+fn consts_with_shift<const N: usize>() -> usize {
+    N
+}
+
+#[crate::bench(crate = crate, ignore, types = [HashMap<fn() -> u8, u8>])]
+fn generic_type_with_arrow<T>() {
+    let _ = std::marker::PhantomData::<T>;
+}
+
 fn find_bench(raw_name: &str) -> &'static crate::__private::BenchEntry {
     BENCH_ENTRIES
         .iter()
@@ -104,6 +136,30 @@ fn list_benches_does_not_run_benchmark_bodies() {
     Rustybench::default().run_only_ignored().list_benches();
 
     assert_eq!(LIST_PROBE_ITERS.load(SeqCst), 0);
+}
+
+#[test]
+fn generic_types_with_nested_commas_register() {
+    let group = find_group("generic_types_with_nested_commas");
+    assert_eq!(group.generic_benches_iter().count(), 2);
+}
+
+#[test]
+fn args_with_nested_comma_in_type_register() {
+    let bench = find_bench("args_with_nested_comma_in_type");
+    assert!(ignored(&bench.meta));
+}
+
+#[test]
+fn consts_with_shift_split() {
+    let group = find_group("consts_with_shift");
+    assert_eq!(group.generic_benches_iter().count(), 2);
+}
+
+#[test]
+fn generic_type_with_arrow_register() {
+    let group = find_group("generic_type_with_arrow");
+    assert_eq!(group.generic_benches_iter().count(), 1);
 }
 
 #[test]

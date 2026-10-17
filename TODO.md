@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-9 · P2 · Bound sample-size tuning by batch setup cost
-
-- **Area:** Performance
-- **Where:** `src/benchmark/mod.rs:771-787,1081-1103`, `src/benchmark/defer.rs:64-85`
-- **Problem:** Tuning doubles `sample_size` based on the timed closure duration, then reserves and initializes storage for the full batch before checking the time budget again. Benchmarks with large generated inputs can retain enough inputs in one tuning batch to exhaust memory, and expensive setup or drops can make a batch run far beyond the target duration.
-- **Recommendation:** Include batch setup and cleanup cost when increasing sample size, and check the next batch cost before reserving its storage.
-- **Fix with:** `make-it-fast`
-- **Effort:** M (days)
-
 ### RUST-10 · P2 · Compute allocation medians from allocation samples
 
 - **Area:** Data

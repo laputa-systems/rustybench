@@ -786,7 +786,7 @@ impl<'a> BenchContext<'a> {
                 };
 
                 // Sample loop:
-                let ([start, end], alloc_info, process_resources) = record_sample(
+                let ([start, end], alloc_info, process_resources, external_time) = record_sample(
                     sample_size as usize,
                     barrier.as_ref(),
                     &mut count_input,
@@ -796,6 +796,7 @@ impl<'a> BenchContext<'a> {
                 RawSample {
                     start,
                     end,
+                    external_time,
                     alloc_info,
                     counter_totals,
                     process_resources,
@@ -843,11 +844,37 @@ impl<'a> BenchContext<'a> {
                 self.samples.clear();
                 self.counters.clear_input_counts();
 
-                // If within 100x timer precision, continue tuning.
-                let precision_multiple = slowest_time.picos / timer_precision.picos;
-                if precision_multiple <= 100 {
+                let sample_cost = if sample_size == 1 {
+                    slowest_time
+                } else {
+                    let slowest_external = raw_samples
+                        .iter()
+                        .map(|sample| sample.external_time.picos)
+                        .max()
+                        .unwrap_or(0);
+
+                    FineDuration {
+                        picos: slowest_time.picos.saturating_add(slowest_external),
+                    }
+                };
+
+                let precision_multiple = sample_cost.picos / timer_precision.picos;
+                let budget_cost = if skip_ext_time {
+                    slowest_time
+                } else {
+                    sample_cost
+                };
+                let next_sample_size = sample_size.saturating_mul(2);
+                let remaining_picos = max_picos
+                    .saturating_sub(elapsed_picos)
+                    .saturating_sub(budget_cost.picos);
+
+                if precision_multiple <= 100
+                    && next_sample_size > sample_size
+                    && budget_cost.picos.saturating_mul(2) <= remaining_picos
+                {
                     current_mode = BenchMode::Tune {
-                        sample_size: sample_size * 2,
+                        sample_size: next_sample_size,
                     };
                 } else {
                     current_mode = BenchMode::Collect { sample_size };
@@ -938,6 +965,7 @@ impl<'a> BenchContext<'a> {
         [Timestamp; 2],
         ThreadAllocInfo,
         Option<ProcessResourceDelta>,
+        FineDuration,
     ) + use<I, O, G, B, D>
     where
         G: Fn() -> I,
@@ -1088,6 +1116,7 @@ impl<'a> BenchContext<'a> {
             // benchmarking.
             let sample_start: Timestamp;
             let sample_end: Timestamp;
+            let mut external_picos: u128 = 0;
 
             if size_of::<I>() == 0 && (size_of::<O>() == 0 || !mem::needs_drop::<O>()) {
                 // Use a range instead of `defer_store` to make the benchmarking
@@ -1095,6 +1124,7 @@ impl<'a> BenchContext<'a> {
 
                 // Run `gen_input` the expected number of times in case it
                 // updates external state used by `benched`.
+                let gen_start = Timestamp::start();
                 for _ in 0..sample_size {
                     let input = gen_input();
                     count_input(&input);
@@ -1102,6 +1132,8 @@ impl<'a> BenchContext<'a> {
                     // Inputs are consumed/dropped later.
                     mem::forget(input);
                 }
+                external_picos =
+                    external_picos.saturating_add(Timestamp::end().duration_since(gen_start).picos);
 
                 process_resource_start = sync_threads(true);
                 sample_start = Timestamp::start();
@@ -1120,6 +1152,7 @@ impl<'a> BenchContext<'a> {
                 save_alloc_info();
 
                 // Drop outputs and inputs.
+                let drop_start = Timestamp::start();
                 for _ in 0..sample_size {
                     // Output only needs drop if ZST.
                     if size_of::<O>() == 0 {
@@ -1134,6 +1167,8 @@ impl<'a> BenchContext<'a> {
                         unsafe { drop_input(&UnsafeCell::new(MaybeUninit::<I>::zeroed())) }
                     }
                 }
+                external_picos =
+                    external_picos.saturating_add(Timestamp::end().duration_since(drop_start).picos);
             } else {
                 defer_store.prepare(sample_size);
 
@@ -1142,6 +1177,7 @@ impl<'a> BenchContext<'a> {
                     // loop by inserting it into `defer_store`.
                     Ok(defer_slots_slice) => {
                         // Initialize and store inputs.
+                        let gen_start = Timestamp::start();
                         for DeferSlot { input, .. } in defer_slots_slice {
                             // SAFETY: We have exclusive access to `input`.
                             let input = unsafe { &mut *input.get() };
@@ -1151,6 +1187,8 @@ impl<'a> BenchContext<'a> {
                             // Make input opaque to benchmarked function.
                             black_box(input);
                         }
+                        external_picos = external_picos
+                            .saturating_add(Timestamp::end().duration_since(gen_start).picos);
 
                         // Create iterator before the sample timing section to
                         // reduce benchmarking overhead.
@@ -1179,6 +1217,7 @@ impl<'a> BenchContext<'a> {
                         black_box(defer_slots_slice);
 
                         // Drop outputs and inputs.
+                        let drop_start = Timestamp::start();
                         for DeferSlot { input, output } in defer_slots_slice {
                             // SAFETY: All outputs were initialized in the
                             // sample loop and we have exclusive access.
@@ -1190,11 +1229,14 @@ impl<'a> BenchContext<'a> {
                                 unsafe { drop_input(input) }
                             }
                         }
+                        external_picos = external_picos
+                            .saturating_add(Timestamp::end().duration_since(drop_start).picos);
                     }
 
                     // Output does not need to be dropped.
                     Err(defer_inputs_slice) => {
                         // Initialize and store inputs.
+                        let gen_start = Timestamp::start();
                         for input in defer_inputs_slice {
                             // SAFETY: We have exclusive access to `input`.
                             let input = unsafe { &mut *input.get() };
@@ -1204,6 +1246,8 @@ impl<'a> BenchContext<'a> {
                             // Make input opaque to benchmarked function.
                             black_box(input);
                         }
+                        external_picos = external_picos
+                            .saturating_add(Timestamp::end().duration_since(gen_start).picos);
 
                         // Create iterator before the sample timing section to
                         // reduce benchmarking overhead.
@@ -1229,10 +1273,14 @@ impl<'a> BenchContext<'a> {
 
                         // Drop inputs.
                         if mem::needs_drop::<I>() {
+                            let drop_start = Timestamp::start();
                             for input in defer_inputs_slice {
                                 // SAFETY: We have exclusive access to inputs.
                                 unsafe { drop_input(input) }
                             }
+                            external_picos = external_picos.saturating_add(
+                                Timestamp::end().duration_since(drop_start).picos,
+                            );
                         }
                     }
                 }
@@ -1248,7 +1296,9 @@ impl<'a> BenchContext<'a> {
                 panic!("Linux syscall trace marker failed: {error}");
             }
 
-            (interval, saved_alloc_info, process_resources)
+            (interval, saved_alloc_info, process_resources, FineDuration {
+                picos: external_picos,
+            })
         }
     }
 

@@ -23,6 +23,7 @@ pub(crate) struct TimeSample {
 pub(crate) struct RawSample {
     pub start: Timestamp,
     pub end: Timestamp,
+    pub external_time: FineDuration,
     pub alloc_info: ThreadAllocInfo,
     pub counter_totals: [u128; KnownCounterKind::COUNT],
     pub process_resources: Option<ProcessResourceDelta>,

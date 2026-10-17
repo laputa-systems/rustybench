@@ -410,6 +410,36 @@ mod run_count {
 }
 
 #[test]
+fn setup_cost_bounds_tuned_sample_size() {
+    _ = crate::time::bench_overheads();
+    _ = crate::time::timer_precision();
+
+    let bench_options = BenchOptions {
+        sample_count: Some(1),
+        ..BenchOptions::default()
+    };
+    let shared_context = SharedContext {
+        action: Action::Bench,
+        thread_pool: ThreadPool::new(),
+    };
+    let mut bench_context = BenchContext::new(
+        &shared_context,
+        &bench_options,
+        NonZeroUsize::new(1).unwrap(),
+    );
+
+    Bencher::new(&mut bench_context)
+        .with_inputs(|| vec![0u8; 4 * 1024 * 1024])
+        .bench_refs(|buffer: &mut Vec<u8>| buffer.len());
+
+    assert!(
+        bench_context.samples.sample_size <= 8,
+        "retained {} generated inputs; setup and drop cost should bound tuning",
+        bench_context.samples.sample_size,
+    );
+}
+
+#[test]
 fn worker_panic_releases_peers() {
     use std::{sync::mpsc, time::Duration};
 

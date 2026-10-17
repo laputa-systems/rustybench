@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-13 · P3 · Verify LLVM archives before extracting them in Docker
-
-- **Area:** Security
-- **Where:** `Dockerfile:23-32`
-- **Problem:** The Docker build downloads versioned LLVM archives over HTTPS and extracts them as the compiler toolchain without checking a published digest or signature. A replaced upstream artifact becomes executable build input.
-- **Recommendation:** Verify the upstream release digest or signature before extraction.
-- **Fix with:** `none`
-- **Effort:** S (hours)
-
 ### RUST-14 · P3 · Compare both benchmark names in numeric sorting
 
 - **Area:** Config

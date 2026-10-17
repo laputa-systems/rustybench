@@ -19,9 +19,11 @@ RUN apk add --no-cache \
 RUN ar rcs /usr/lib/libutil.a
 
 # Use the prebuilt LLVM family used by the Linux toolchain. The archive is
-# musl-linked so clang, lld, and the LLVM tools run inside Alpine.
-ADD https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/llvm-musl-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-x86_64-linux-musl.tar.xz /tmp/llvm-x86_64.tar.xz
-ADD https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/llvm-musl-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-aarch64-linux-musl.tar.xz /tmp/llvm-aarch64.tar.xz
+# musl-linked so clang, lld, and the LLVM tools run inside Alpine. The digests
+# are those published in the release's checksums asset and must be replaced
+# with the matching pair when LLVM_VERSION moves.
+ADD --checksum=sha256:ac0bd443a1933bbd2c0efbedf6ebc97ff8ca2469e5ba65eadb966fb75f65dd1c https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/llvm-musl-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-x86_64-linux-musl.tar.xz /tmp/llvm-x86_64.tar.xz
+ADD --checksum=sha256:675f9cf871313a5672a63882d4d30dd6dd55df0aa9caee70970542eb03a23da3 https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/llvm-musl-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-aarch64-linux-musl.tar.xz /tmp/llvm-aarch64.tar.xz
 RUN case "$TARGETARCH" in \
         amd64) archive=/tmp/llvm-x86_64.tar.xz ;; \
         arm64) archive=/tmp/llvm-aarch64.tar.xz ;; \

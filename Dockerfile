@@ -2,6 +2,7 @@ FROM alpine:3.24.1
 
 ARG TARGETARCH
 ARG LLVM_VERSION=22.1.8
+ARG RUSTUP_VERSION=1.29.1
 
 RUN apk add --no-cache \
     binutils \
@@ -41,8 +42,8 @@ RUN for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do \
         done; \
     done
 
-ADD https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-musl/rustup-init /rustup-init-x86_64
-ADD https://static.rust-lang.org/rustup/dist/aarch64-unknown-linux-musl/rustup-init /rustup-init-aarch64
+ADD --checksum=sha256:331228566cc931f32cd684f9bebc5956a5e5d7394c8d5de595f196a658ab98e6 https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/x86_64-unknown-linux-musl/rustup-init /rustup-init-x86_64
+ADD --checksum=sha256:1ddf36182ac5d1782dbeefcb9bea7f5f9412d88f4a0d5047b1564a223624e8c6 https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/aarch64-unknown-linux-musl/rustup-init /rustup-init-aarch64
 RUN case "$TARGETARCH" in \
         amd64) init=/rustup-init-x86_64 ;; \
         arm64) init=/rustup-init-aarch64 ;; \

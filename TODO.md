@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 22
 
-### RUST-18 · P3 · Verify the rustup downloads in the Docker build
-
-- **Area:** Security
-- **Where:** `Dockerfile:42-43`
-- **Problem:** The two `rustup-init` binaries are fetched with `ADD` and no checksum from an unversioned URL, so a replaced upstream artifact becomes executable build input and the pinned toolchain version floats.
-- **Recommendation:** Pin the rustup version in the URL and add `--checksum=sha256:` for both binaries, using the digests published for that version.
-- **Fix with:** `os-boundaries`
-- **Effort:** S (hours)
-
 ### RUST-19 · P4 · Compare prereleases in the release script's version plan
 
 - **Area:** Tooling

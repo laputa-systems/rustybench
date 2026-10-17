@@ -105,7 +105,7 @@ impl SortingAttr {
                 SortingAttr::Kind => Ordering::Equal,
 
                 SortingAttr::Name => 'ordering: {
-                    match (a.parse::<u128>(), a.parse::<u128>()) {
+                    match (a.parse::<u128>(), b.parse::<u128>()) {
                         (Ok(a_u128), Ok(b_u128)) => break 'ordering a_u128.cmp(&b_u128),
 
                         (Ok(_), Err(_)) => {
@@ -121,7 +121,7 @@ impl SortingAttr {
                         }
 
                         (Err(_), Err(_)) => {
-                            if let (Ok(a_i128), Ok(b_i128)) = (a.parse::<i128>(), a.parse::<i128>())
+                            if let (Ok(a_i128), Ok(b_i128)) = (a.parse::<i128>(), b.parse::<i128>())
                             {
                                 break 'ordering a_i128.cmp(&b_i128);
                             }
@@ -150,5 +150,26 @@ impl SortingAttr {
         }
 
         Ordering::Equal
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SortingAttr;
+
+    fn sort_names<'a>(names: &[&'a str]) -> Vec<&'a str> {
+        let mut args: Vec<&&str> = names.iter().collect();
+        args.sort_by(|&a, &b| SortingAttr::Name.cmp_bench_arg_names(a, b));
+        args.into_iter().copied().collect()
+    }
+
+    #[test]
+    fn name_sorts_unsigned_integers_by_value() {
+        assert_eq!(sort_names(&["100", "3", "8"]), ["3", "8", "100"]);
+    }
+
+    #[test]
+    fn name_sorts_signed_integers_by_value() {
+        assert_eq!(sort_names(&["-5", "-10", "3"]), ["-10", "-5", "3"]);
     }
 }

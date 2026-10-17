@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-14 · P3 · Compare both benchmark names in numeric sorting
-
-- **Area:** Config
-- **Where:** `src/config/mod.rs:102-137`
-- **Problem:** The integer comparison parses `a` for both tuple elements, including in the signed-integer fallback. Numeric arguments therefore compare equal instead of sorting by their values. Running the sample benchmark with `--sortr name` produced `100, 3, 8` instead of descending numeric order.
-- **Recommendation:** Parse and compare `a` with `b`, and retain an unsorted numeric input in the comparator regression coverage.
-- **Fix with:** `none`
-- **Effort:** S (hours)
-
 ### RUST-15 · P3 · Match Linux resource fields to the target C long width
 
 - **Area:** Data

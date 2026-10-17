@@ -131,33 +131,89 @@ registry_version() {
 
 version_at_least() {
     awk -v left="$1" -v right="$2" '
-        function components(value, result) {
-            sub(/[+].*$/, "", value)
-            sub(/-.*/, "", value)
-            return split(value, result, "[.]")
-        }
-        function compare_component(left_part, right_part) {
+        function compare_decimal(left_part, right_part) {
             if (length(left_part) < length(right_part)) return -1
             if (length(left_part) > length(right_part)) return 1
             if (("x" left_part) < ("x" right_part)) return -1
             if (("x" left_part) > ("x" right_part)) return 1
             return 0
         }
-        BEGIN {
-            components(left, left_parts)
-            components(right, right_parts)
+        function compare_core(left_value, right_value, left_parts, right_parts, part, comparison) {
+            sub(/[+].*$/, "", left_value)
+            sub(/[+].*$/, "", right_value)
+            sub(/-.*/, "", left_value)
+            sub(/-.*/, "", right_value)
+            split(left_value, left_parts, "[.]")
+            split(right_value, right_parts, "[.]")
             for (part = 1; part <= 3; part++) {
-                comparison = compare_component(left_parts[part], right_parts[part])
-                if (comparison != 0) exit (comparison > 0 ? 0 : 1)
+                comparison = compare_decimal(left_parts[part], right_parts[part])
+                if (comparison != 0) return comparison
             }
-            exit 0
+            return 0
+        }
+        function has_prerelease(value) {
+            sub(/[+].*$/, "", value)
+            return value ~ /-/
+        }
+        function prerelease_identifiers(value, identifiers) {
+            sub(/[+].*$/, "", value)
+            if (value !~ /-/) return 0
+            sub(/^[^-]*-/, "", value)
+            return split(value, identifiers, "[.]")
+        }
+        function compare_identifier(left_part, right_part) {
+            if (left_part ~ /^[0-9]+$/ && right_part ~ /^[0-9]+$/) return compare_decimal(left_part, right_part)
+            if (left_part ~ /^[0-9]+$/) return -1
+            if (right_part ~ /^[0-9]+$/) return 1
+            if (("x" left_part) < ("x" right_part)) return -1
+            if (("x" left_part) > ("x" right_part)) return 1
+            return 0
+        }
+        function compare_versions(left_value, right_value, left_identifiers, right_identifiers, left_count, right_count, position, comparison) {
+            comparison = compare_core(left_value, right_value)
+            if (comparison != 0) return comparison
+            if (has_prerelease(left_value) && !has_prerelease(right_value)) return -1
+            if (!has_prerelease(left_value) && has_prerelease(right_value)) return 1
+            if (!has_prerelease(left_value) && !has_prerelease(right_value)) return 0
+            left_count = prerelease_identifiers(left_value, left_identifiers)
+            right_count = prerelease_identifiers(right_value, right_identifiers)
+            for (position = 1; position <= left_count || position <= right_count; position++) {
+                if (position > left_count) return -1
+                if (position > right_count) return 1
+                comparison = compare_identifier(left_identifiers[position], right_identifiers[position])
+                if (comparison != 0) return comparison
+            }
+            return 0
+        }
+        BEGIN {
+            exit (compare_versions(left, right) >= 0 ? 0 : 1)
         }
     '
 }
 
+version_is_prerelease() {
+    case ${1%%+*} in
+        *-*) return 0 ;;
+    esac
+    return 1
+}
+
+target_already_published() {
+    if ! version_at_least "$1" "$2"; then
+        return 1
+    fi
+    if [ "$1" = "$2" ]; then
+        return 0
+    fi
+    if version_is_prerelease "$1"; then
+        return 1
+    fi
+    return 0
+}
+
 publish_package() {
     already_published=$(registry_version "$1") || exit 1
-    if version_at_least "$already_published" "$2"; then
+    if target_already_published "$already_published" "$2"; then
         printf '%s\n' "$1 $2 is already published; skipping"
         return 0
     fi

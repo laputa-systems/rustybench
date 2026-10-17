@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-2 · P2 · Compare prerelease versions before skipping a publish
-
-- **Area:** Build
-- **Where:** `tools/bump_minor_release.sh:132-160`
-- **Problem:** `version_at_least` removes both build and prerelease suffixes and compares only the three numeric components. If the registry query returns a prerelease such as `1.4.0-rc.1` while the target is `1.4.0`, the script treats them as equal and skips publishing the stable release.
-- **Recommendation:** Compare Cargo versions with SemVer precedence and skip only when the stable target or a newer stable version is published.
-- **Fix with:** `none`
-- **Effort:** M (days)
-
 ### RUST-3 · P2 · Make the public list method list benchmarks
 
 - **Area:** Architecture

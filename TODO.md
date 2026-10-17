@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-8 · P2 · Keep resource snapshots from suppressing worker allocation samples
-
-- **Area:** Concurrency
-- **Where:** `src/alloc.rs:14`, `src/util/sync.rs:39-54`, `src/resource.rs:135-139`, `src/benchmark/mod.rs:917-924,1062-1063,1117-1118`
-- **Problem:** `IGNORE_ALLOC` is one shared atomic flag. While the main thread captures process resources, `capture_unprofiled` sets it for every thread. A worker saving its allocation sample during that interval sees the flag and returns without copying its thread-local tally, so multithreaded allocation reports can silently omit samples.
-- **Recommendation:** Scope allocation suppression to the thread taking the resource snapshot, and synchronize allocation sample collection across workers.
-- **Fix with:** `lifecycle-concurrency`
-- **Effort:** M (days)
-
 ### RUST-9 · P2 · Bound sample-size tuning by batch setup cost
 
 - **Area:** Performance

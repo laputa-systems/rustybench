@@ -1,9 +1,6 @@
 //! Synchronization utilities.
 
-use std::{
-    ops::{Deref, DerefMut},
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::ops::{Deref, DerefMut};
 
 /// Makes the wrapped value [`Send`] + [`Sync`] even though it isn't.
 pub struct SyncWrap<T> {
@@ -35,22 +32,3 @@ impl<T> SyncWrap<T> {
     }
 }
 
-/// A convenience wrapper around `AtomicBool`.
-pub(crate) struct AtomicFlag(AtomicBool);
-
-impl AtomicFlag {
-    #[inline]
-    pub const fn new(value: bool) -> Self {
-        Self(AtomicBool::new(value))
-    }
-
-    #[inline]
-    pub fn get(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
-    }
-
-    #[inline]
-    pub fn set(&self, value: bool) {
-        self.0.store(value, Ordering::Relaxed);
-    }
-}

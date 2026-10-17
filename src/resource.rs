@@ -133,11 +133,8 @@ impl ProcessResourceSnapshot {
     }
 
     pub(crate) fn capture_unprofiled() -> Self {
-        let was_ignored = crate::alloc::IGNORE_ALLOC.get();
-        crate::alloc::IGNORE_ALLOC.set(true);
-        let snapshot = Self::capture();
-        crate::alloc::IGNORE_ALLOC.set(was_ignored);
-        snapshot
+        let _suppress = crate::alloc::SuppressAllocTallying::new();
+        Self::capture()
     }
 }
 

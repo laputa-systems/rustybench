@@ -921,9 +921,6 @@ impl<'a> BenchContext<'a> {
                 elapsed_picos = elapsed_picos.saturating_add(progress_picos);
             }
         }
-
-        // Reset flag for ignoring allocations.
-        crate::alloc::IGNORE_ALLOC.set(false);
     }
 
     /// Returns a closure that takes the sample size and input counter, and then
@@ -983,16 +980,7 @@ impl<'a> BenchContext<'a> {
             let mut syscall_marker_error: Option<std::io::Error> = None;
 
             let mut saved_alloc_info = ThreadAllocInfo::new();
-            let mut save_alloc_info = || {
-                if crate::alloc::IGNORE_ALLOC.get() {
-                    return;
-                }
-
-                if let Some(alloc_info) = ThreadAllocInfo::try_current() {
-                    // SAFETY: We have exclusive access.
-                    saved_alloc_info = unsafe { alloc_info.as_ptr().read() };
-                }
-            };
+            let mut save_alloc_info = || saved_alloc_info.save_current();
 
             // Synchronize all threads to start timed section simultaneously and
             // clear every thread's memory profiling info.

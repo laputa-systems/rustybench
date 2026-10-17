@@ -1,6 +1,6 @@
-use std::{alloc::*, cell::UnsafeCell, fmt, ptr::NonNull};
+use std::{alloc::*, cell::{Cell, UnsafeCell}, fmt, ptr::NonNull};
 
-use crate::{stats::StatsSet, util::sync::AtomicFlag};
+use crate::stats::StatsSet;
 
 /// The `AllocProfiler` when running crate-internal tests.
 ///
@@ -10,8 +10,30 @@ use crate::{stats::StatsSet, util::sync::AtomicFlag};
 #[global_allocator]
 static ALLOC: AllocProfiler = AllocProfiler::system();
 
-/// Whether to ignore allocation info set during the benchmark.
-pub(crate) static IGNORE_ALLOC: AtomicFlag = AtomicFlag::new(false);
+thread_local! {
+    static IGNORE_ALLOC: Cell<bool> = const { Cell::new(false) };
+}
+
+pub(crate) struct SuppressAllocTallying {
+    previous: bool,
+}
+
+impl SuppressAllocTallying {
+    #[inline]
+    pub(crate) fn new() -> Self {
+        Self {
+            previous: IGNORE_ALLOC.with(|ignored| ignored.replace(true)),
+        }
+    }
+}
+
+impl Drop for SuppressAllocTallying {
+    #[inline]
+    fn drop(&mut self) {
+        let previous = self.previous;
+        IGNORE_ALLOC.with(|ignored| ignored.set(previous));
+    }
+}
 
 /// Measures allocation usage for [`GlobalAlloc`] and [`Allocator`] allocators.
 ///
@@ -109,6 +131,10 @@ pub struct AllocProfiler<Alloc = System> {
 
 #[inline]
 fn tally_alloc(size: usize) {
+    if IGNORE_ALLOC.with(Cell::get) {
+        return;
+    }
+
     if let Some(mut info) = ThreadAllocInfo::try_current() {
         // SAFETY: We have exclusive access.
         let info = unsafe { info.as_mut() };
@@ -118,6 +144,10 @@ fn tally_alloc(size: usize) {
 
 #[inline]
 fn tally_dealloc(size: usize) {
+    if IGNORE_ALLOC.with(Cell::get) {
+        return;
+    }
+
     if let Some(mut info) = ThreadAllocInfo::try_current() {
         // SAFETY: We have exclusive access.
         let info = unsafe { info.as_mut() };
@@ -127,6 +157,10 @@ fn tally_dealloc(size: usize) {
 
 #[inline]
 fn tally_realloc(old_size: usize, new_size: usize) {
+    if IGNORE_ALLOC.with(Cell::get) {
+        return;
+    }
+
     if let Some(mut info) = ThreadAllocInfo::try_current() {
         // SAFETY: We have exclusive access.
         let info = unsafe { info.as_mut() };
@@ -313,6 +347,14 @@ impl ThreadAllocInfo {
     /// Sets 0 to all values.
     pub fn clear(&mut self) {
         *self = Self::new();
+    }
+
+    /// Copies the current thread's allocation info into `self`.
+    pub(crate) fn save_current(&mut self) {
+        if let Some(info) = Self::try_current() {
+            // SAFETY: We have exclusive access.
+            *self = unsafe { info.as_ptr().read() };
+        }
     }
 
     /// Tallies the total count and size of the allocation operation.
@@ -515,6 +557,50 @@ impl<T> AllocOpMap<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn worker_allocation_sample_survives_suppression_on_another_thread() {
+        let suppress = SuppressAllocTallying::new();
+
+        let worker_tally = std::thread::spawn(|| {
+            let mut sample = ThreadAllocInfo::new();
+
+            // SAFETY: We have exclusive access to this thread's allocation info.
+            let mut info = ThreadAllocInfo::current().unwrap();
+            unsafe { info.as_mut() }.clear();
+
+            drop(std::hint::black_box(Box::new([0u8; 16])));
+            sample.save_current();
+
+            *sample.tallies.get(AllocOp::Alloc)
+        })
+        .join()
+        .unwrap();
+
+        drop(suppress);
+
+        assert_eq!(worker_tally.count, 1);
+        assert_eq!(worker_tally.size, 16);
+    }
+
+    #[test]
+    fn suppression_excludes_only_the_suppressing_threads_tallies() {
+        let mut info = ThreadAllocInfo::current().unwrap();
+        // SAFETY: We have exclusive access.
+        let info = unsafe { info.as_mut() };
+        info.clear();
+
+        {
+            let _suppress = SuppressAllocTallying::new();
+            drop(std::hint::black_box(Box::new([0u8; 16])));
+            assert_eq!(info.tallies.get(AllocOp::Alloc).count, 0);
+            assert_eq!(info.tallies.get(AllocOp::Dealloc).count, 0);
+        }
+
+        drop(std::hint::black_box(Box::new([0u8; 16])));
+        assert_eq!(info.tallies.get(AllocOp::Alloc).count, 1);
+        assert_eq!(info.tallies.get(AllocOp::Dealloc).count, 1);
+    }
 
     /// Tests that `AllocProfiler` is counting correctly.
     #[test]

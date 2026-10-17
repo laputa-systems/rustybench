@@ -484,6 +484,64 @@ fn worker_panic_releases_peers() {
     }
 }
 
+#[test]
+fn alloc_median_follows_allocation_order_not_time_order() {
+    let bench_options = BenchOptions::default();
+    let shared_context = SharedContext {
+        action: Action::Bench,
+        thread_pool: ThreadPool::new(),
+    };
+    let mut bench_context = BenchContext::new(
+        &shared_context,
+        &bench_options,
+        NonZeroUsize::new(1).unwrap(),
+    );
+
+    bench_context.samples.sample_size = 1;
+
+    let synthetic: [(u128, u64, u64); 3] = [
+        (100, 1000, 1000),
+        (200, 5, 5),
+        (300, 10, 10),
+    ];
+
+    for (index, &(duration_picos, max_count, max_size)) in synthetic.iter().enumerate() {
+        bench_context.samples.time_samples.push(TimeSample {
+            duration: FineDuration {
+                picos: duration_picos,
+            },
+        });
+        bench_context.samples.alloc_info_by_sample.insert(
+            index as u32,
+            ThreadAllocInfo {
+                tallies: AllocOpMap {
+                    values: AllocOp::ALL.map(|op| {
+                        if op == AllocOp::Alloc {
+                            AllocTally {
+                                count: max_count,
+                                size: max_size,
+                            }
+                        } else {
+                            AllocTally::default()
+                        }
+                    }),
+                },
+                max_count: max_count as i64,
+                max_size: max_size as i64,
+                ..Default::default()
+            },
+        );
+    }
+
+    let stats = bench_context.compute_stats();
+    let record = crate::report::BenchmarkRecord::from_stats("synthetic", &stats);
+
+    assert_eq!(record.alloc_count, 10);
+    assert_eq!(record.alloc_bytes, 10);
+    assert_eq!(record.max_alloc_count, 10);
+    assert_eq!(record.max_alloc_bytes, 10);
+}
+
 mod no_input {
     use super::*;
 

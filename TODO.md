@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-10 · P2 · Compute allocation medians from allocation samples
-
-- **Area:** Data
-- **Where:** `src/benchmark/mod.rs:1226-1228,1353-1376`
-- **Problem:** The samples in `median_samples` are selected by elapsed time. The allocation report averages allocation tallies from those same time-selected samples, so its median can differ from the median allocation count and size when allocation behavior varies independently of runtime.
-- **Recommendation:** Select and summarize allocation tallies by their own values while retaining the sample-to-allocation association.
-- **Fix with:** `none`
-- **Effort:** S (hours)
-
 ### RUST-11 · P3 · Honor nested ignore overrides in terse listing
 
 - **Area:** Config

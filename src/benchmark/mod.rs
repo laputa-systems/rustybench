@@ -1418,6 +1418,44 @@ impl<'a> BenchContext<'a> {
             alloc_info.tallies.add_to_total(&mut alloc_total_tallies);
         }
 
+        let sample_alloc_infos: Vec<Option<&ThreadAllocInfo>> = (0..sample_count)
+            .map(|index| alloc_info_by_sample.get(&(index as u32)))
+            .collect();
+
+        let alloc_median = |values: &mut [f64]| -> f64 {
+            values.sort_unstable_by(f64::total_cmp);
+
+            let middle = util::slice_middle(values);
+
+            middle.iter().sum::<f64>() / middle.len().max(1) as f64
+        };
+
+        let mut alloc_max_counts: Vec<f64> = sample_alloc_infos
+            .iter()
+            .map(|info| info.map_or(0.0, |info| info.max_count as f64))
+            .collect();
+        let mut alloc_max_sizes: Vec<f64> = sample_alloc_infos
+            .iter()
+            .map(|info| info.map_or(0.0, |info| info.max_size as f64))
+            .collect();
+
+        let mut alloc_op_counts: [Vec<f64>; AllocOp::ALL.len()] =
+            std::array::from_fn(|_| Vec::with_capacity(sample_count));
+        let mut alloc_op_sizes: [Vec<f64>; AllocOp::ALL.len()] =
+            std::array::from_fn(|_| Vec::with_capacity(sample_count));
+
+        for op in AllocOp::ALL {
+            let op_counts = &mut alloc_op_counts[op as usize];
+            let op_sizes = &mut alloc_op_sizes[op as usize];
+
+            for info in &sample_alloc_infos {
+                let tally = info.map(|info| *info.tallies.get(op)).unwrap_or_default();
+
+                op_counts.push(tally.count as f64);
+                op_sizes.push(tally.size as f64);
+            }
+        }
+
         let sample_size = f64::from(sample_size);
         Stats {
             sample_count: sample_count as u32,
@@ -1457,31 +1495,9 @@ impl<'a> BenchContext<'a> {
                             / sample_size,
                     }
                 },
-                median: {
-                    let alloc_info_for_median =
-                        |index| sample_alloc_info(median_samples.get(index).copied());
-
-                    let max_count_for_median = |index: usize| -> f64 {
-                        alloc_info_for_median(index)
-                            .map(|info| info.max_count as f64)
-                            .unwrap_or_default()
-                    };
-
-                    let max_size_for_median = |index: usize| -> f64 {
-                        alloc_info_for_median(index)
-                            .map(|info| info.max_size as f64)
-                            .unwrap_or_default()
-                    };
-
-                    let median_count = median_samples.len().max(1) as f64;
-
-                    let median_max_count = max_count_for_median(0) + max_count_for_median(1);
-                    let median_max_size = max_size_for_median(0) + max_size_for_median(1);
-
-                    AllocTally {
-                        count: median_max_count / median_count / sample_size,
-                        size: median_max_size / median_count / sample_size,
-                    }
+                median: AllocTally {
+                    count: alloc_median(&mut alloc_max_counts) / sample_size,
+                    size: alloc_median(&mut alloc_max_sizes) / sample_size,
                 },
                 mean: AllocTally {
                     count: alloc_total_max_count as f64 / total_count as f64,
@@ -1508,23 +1524,9 @@ impl<'a> BenchContext<'a> {
                                 size: slowest.size as f64 / sample_size,
                             }
                         },
-                        median: {
-                            let tally_for_median = |index: usize| -> ThreadAllocTally {
-                                sample_alloc_tally(median_samples.get(index).copied(), op)
-                            };
-
-                            let a = tally_for_median(0);
-                            let b = tally_for_median(1);
-
-                            let median_count = median_samples.len().max(1) as f64;
-
-                            let avg_count = (a.count as f64 + b.count as f64) / median_count;
-                            let avg_size = (a.size as f64 + b.size as f64) / median_count;
-
-                            AllocTally {
-                                count: avg_count / sample_size,
-                                size: avg_size / sample_size,
-                            }
+                        median: AllocTally {
+                            count: alloc_median(&mut alloc_op_counts[op as usize]) / sample_size,
+                            size: alloc_median(&mut alloc_op_sizes[op as usize]) / sample_size,
                         },
                         mean: {
                             let tally = alloc_total_tallies.get(op);

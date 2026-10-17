@@ -133,6 +133,20 @@ mod terse_override_group {
     fn excluded() {}
 }
 
+#[crate::bench(crate = crate, ignore)]
+fn bench() {}
+
+#[allow(non_snake_case)]
+#[crate::bench(crate = crate, ignore)]
+fn BENCH() {}
+
+#[crate::bench_group(crate = crate, ignore)]
+mod case_group {}
+
+#[allow(non_snake_case)]
+#[crate::bench_group(crate = crate, ignore)]
+mod CASE_GROUP {}
+
 fn tree_paths() -> Vec<String> {
     use crate::entry::{AnyBenchEntry, EntryTree};
 
@@ -257,6 +271,15 @@ fn consts_with_shift_split() {
 fn generic_type_with_arrow_register() {
     let group = find_group("generic_type_with_arrow");
     assert_eq!(group.generic_benches_iter().count(), 1);
+}
+
+#[test]
+fn case_variant_names_register_distinctly() {
+    assert_eq!(find_bench("bench").meta.display_name, "bench");
+    assert_eq!(find_bench("BENCH").meta.display_name, "BENCH");
+
+    assert_eq!(find_group("case_group").meta.display_name, "case_group");
+    assert_eq!(find_group("CASE_GROUP").meta.display_name, "CASE_GROUP");
 }
 
 #[test]

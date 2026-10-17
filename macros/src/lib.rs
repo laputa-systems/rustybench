@@ -75,10 +75,7 @@ pub fn bench_group(options: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let private_mod = &options.private_mod;
-    let static_ident = format!(
-        "__RUSTYBENCH_GROUP_{}",
-        pretty_name(&module.name.to_string()).to_uppercase()
-    );
+    let static_ident = format!("__RUSTYBENCH_GROUP_{}", pretty_name(&module.name.to_string()));
     let meta = entry_meta_expr(&module.name.to_string(), &options, module.ignored);
     let generated = format_tokens(format!(
         "{} static {static_ident}: {private_mod}::EntryList<{private_mod}::GroupEntry> = {{ {{ {} static PUSH: extern \"C\" fn() = push; extern \"C\" fn push() {{ {private_mod}::GROUP_ENTRIES.push(&{static_ident}); }} }} {private_mod}::EntryList::new({{ static {static_ident}: {private_mod}::GroupEntry = {private_mod}::GroupEntry {{ meta: {meta}, generic_benches: None, }}; &{static_ident} }}) }};",
@@ -95,7 +92,7 @@ fn generate_bench(function: &FunctionInfo, options: &AttrOptions) -> TokenStream
     let private_mod = &options.private_mod;
     let static_ident = format!(
         "__RUSTYBENCH_BENCH_{}",
-        pretty_name(&function.name.to_string()).to_uppercase()
+        pretty_name(&function.name.to_string())
     );
     let meta = entry_meta_expr(&function.name.to_string(), options, function.ignored);
     let bench_args_global = if options.args_expr.is_some() {

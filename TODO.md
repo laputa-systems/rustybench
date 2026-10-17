@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-11 · P3 · Honor nested ignore overrides in terse listing
-
-- **Area:** Config
-- **Where:** `src/rustybench.rs:167-200,484-489`
-- **Problem:** Terse listing checks a parent group's `ignore` value and skips that subtree before visiting children. Unlike normal traversal, it does not merge child options over parent options, so a nested `ignore = false` benchmark is omitted under an ignored group. A probe under `NEXTEST=1` confirmed the child is missing from `--list --format terse` output.
-- **Recommendation:** Apply the same parent-to-child option override rules during terse listing as during normal traversal.
-- **Fix with:** `reference-parity`
-- **Effort:** S (hours)
-
 ### RUST-12 · P3 · Capture process counters before releasing sample workers
 
 - **Area:** Data

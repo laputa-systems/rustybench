@@ -112,7 +112,7 @@ impl Rustybench {
 
         // When run under `cargo-nextest`, it provides `--list --format terse`.
         if action.is_list_terse() {
-            self.run_tree_list(&tree, "");
+            self.run_tree_list(&tree, None, "");
             return;
         }
 
@@ -164,18 +164,26 @@ impl Rustybench {
         }
     }
 
-    fn run_tree_list(&self, tree: &[EntryTree], parent_path: &str) {
+    fn run_tree_list(
+        &self,
+        tree: &[EntryTree],
+        parent_options: Option<&BenchOptions>,
+        parent_path: &str,
+    ) {
         let mut full_path = String::with_capacity(parent_path.len());
 
         for child in tree {
-            let ignore = child
-                .bench_options()
-                .and_then(|options| options.ignore)
-                .unwrap_or_default();
+            let child_options = child.bench_options();
 
-            if self.should_ignore(ignore) {
-                continue;
-            }
+            let options: BenchOptions;
+            let options: Option<&BenchOptions> = match (parent_options, child_options) {
+                (None, None) => None,
+                (Some(options), None) | (None, Some(options)) => Some(options),
+                (Some(parent_options), Some(child_options)) => {
+                    options = child_options.overwrite(parent_options);
+                    Some(&options)
+                }
+            };
 
             full_path.clear();
 
@@ -187,17 +195,32 @@ impl Rustybench {
             full_path.push_str(child.display_name());
 
             match child {
-                EntryTree::Leaf { args: None, .. } => {
-                    println!("{full_path}: benchmark")
-                }
-                EntryTree::Leaf {
-                    args: Some(args), ..
-                } => {
-                    for arg in args {
-                        println!("{full_path}::{arg}: benchmark")
+                EntryTree::Leaf { args, .. } => {
+                    let merged: BenchOptions;
+                    let merged: &BenchOptions = match options {
+                        None => &self.bench_options,
+                        Some(options) => {
+                            merged = self.bench_options.overwrite(options);
+                            &merged
+                        }
+                    };
+
+                    if self.should_ignore(merged.ignore.unwrap_or_default()) {
+                        continue;
+                    }
+
+                    match args {
+                        None => println!("{full_path}: benchmark"),
+                        Some(args) => {
+                            for arg in args {
+                                println!("{full_path}::{arg}: benchmark")
+                            }
+                        }
                     }
                 }
-                EntryTree::Parent { children, .. } => self.run_tree_list(children, &full_path),
+                EntryTree::Parent { children, .. } => {
+                    self.run_tree_list(children, options, &full_path)
+                }
             }
         }
     }

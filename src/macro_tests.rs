@@ -124,6 +124,15 @@ fn colliding_consts<T, const N: u8>() {}
 )]
 fn colliding_types<T>() {}
 
+#[crate::bench_group(crate = crate, ignore)]
+mod terse_override_group {
+    #[crate::bench(crate = crate, ignore = false)]
+    fn included() {}
+
+    #[crate::bench(crate = crate, ignore)]
+    fn excluded() {}
+}
+
 fn tree_paths() -> Vec<String> {
     use crate::entry::{AnyBenchEntry, EntryTree};
 
@@ -272,4 +281,36 @@ fn registration_metadata_preserves_names_and_paths() {
     let group = find_group("nested_group");
     assert!(group.meta.module_path.ends_with("::metadata_group"));
     assert!(ignored(&group.meta));
+}
+
+#[test]
+#[ignore]
+fn terse_listing_probe() {
+    Rustybench::default().run_action(crate::config::Action::ListTerse);
+}
+
+#[test]
+fn terse_listing_honors_nested_ignore_override() {
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "macro_tests::terse_listing_probe",
+            "--ignored",
+            "--nocapture",
+        ])
+        .output()
+        .expect("run terse listing probe");
+
+    assert!(output.status.success(), "{output:?}");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        stdout.contains("terse_override_group::included: benchmark"),
+        "nested unignored benchmark missing from terse listing:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("terse_override_group::excluded"),
+        "nested ignored benchmark should not appear:\n{stdout}"
+    );
 }

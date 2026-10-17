@@ -181,6 +181,9 @@ dependencies = [
 [[package]]
 name = "rustybench-macros"
 version = "0.4.0"
+dependencies = [
+ "syn 3.0.3",
+]
 
 [[package]]
 name = "slab"

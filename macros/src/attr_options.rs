@@ -94,7 +94,7 @@ impl AttrOptions {
                     }
                     set_once(
                         &mut generic.consts,
-                        ExprValue::new(value),
+                        ExprValue::new_const(value),
                         macro_name,
                         normalized,
                     )?;
@@ -266,12 +266,29 @@ impl GenericOptions {
 
 pub struct ExprValue {
     pub raw: TokenStream,
-    pub array: Option<Vec<TokenStream>>,
+    pub array: Option<ArrayItems>,
+}
+
+pub struct ArrayItems(usize);
+
+impl ArrayItems {
+    pub fn len(&self) -> usize {
+        self.0
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
 }
 
 impl ExprValue {
     fn new(raw: TokenStream) -> Self {
-        let array = array_values(&raw);
+        let array = array_values(&raw).map(|values| ArrayItems(values.len()));
+        Self { raw, array }
+    }
+
+    fn new_const(raw: TokenStream) -> Self {
+        let array = tokens::expression_array_len(&raw).map(ArrayItems);
         Self { raw, array }
     }
 

@@ -11,6 +11,12 @@ pub fn display(tokens: &TokenStream) -> String {
     tokens.to_string()
 }
 
+pub fn expression_array_len(tokens: &TokenStream) -> Option<usize> {
+    syn::parse::<syn::ExprArray>(tokens.clone())
+        .ok()
+        .map(|array| array.elems.len())
+}
+
 pub fn string_literal(value: &str) -> String {
     Literal::string(value).to_string()
 }

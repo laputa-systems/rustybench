@@ -346,3 +346,14 @@ fn comparison_consts_split() {
     let group = find_group("comparison_consts");
     assert_eq!(group.generic_benches_iter().count(), 2);
 }
+
+const LEN: usize = 2;
+
+#[crate::bench(crate = crate, ignore, consts = [LEN < 3, LEN < 4])]
+fn identifier_comparison_consts<const B: bool>() {}
+
+#[test]
+fn identifier_comparison_consts_split() {
+    let group = find_group("identifier_comparison_consts");
+    assert_eq!(group.generic_benches_iter().count(), 2);
+}

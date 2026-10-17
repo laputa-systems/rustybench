@@ -129,7 +129,7 @@ registry_version() {
     ' || fail "could not find $1 on the default Cargo registry"
 }
 
-version_at_least() {
+compare_versions() {
     awk -v left="$1" -v right="$2" '
         function compare_decimal(left_part, right_part) {
             if (length(left_part) < length(right_part)) return -1
@@ -169,7 +169,7 @@ version_at_least() {
             if (("x" left_part) > ("x" right_part)) return 1
             return 0
         }
-        function compare_versions(left_value, right_value, left_identifiers, right_identifiers, left_count, right_count, position, comparison) {
+        function compare(left_value, right_value, left_identifiers, right_identifiers, left_count, right_count, position, comparison) {
             comparison = compare_core(left_value, right_value)
             if (comparison != 0) return comparison
             if (has_prerelease(left_value) && !has_prerelease(right_value)) return -1
@@ -186,7 +186,51 @@ version_at_least() {
             return 0
         }
         BEGIN {
-            exit (compare_versions(left, right) >= 0 ? 0 : 1)
+            print compare(left, right)
+        }
+    '
+}
+
+version_at_least() {
+    comparison=$(compare_versions "$1" "$2")
+    [ "$comparison" -ge 0 ]
+}
+
+version_plan() {
+    comparison=$(compare_versions "$1" "$2")
+    awk -v current="$1" -v latest="$2" -v comparison="$comparison" '
+        function valid_version(value) {
+            return value ~ /^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$/
+        }
+        function components(value, result) {
+            sub(/[+].*$/, "", value)
+            sub(/-.*/, "", value)
+            return split(value, result, "[.]")
+        }
+        function increment_decimal(value, result, carry, position, digit, next_digit) {
+            result = ""
+            carry = 1
+            for (position = length(value); position > 0; position--) {
+                digit = substr(value, position, 1)
+                next_digit = index("0123456789", digit) - 1 + carry
+                if (next_digit == 10) {
+                    next_digit = 0
+                    carry = 1
+                } else {
+                    carry = 0
+                }
+                result = substr("0123456789", next_digit + 1, 1) result
+            }
+            if (carry) result = "1" result
+            return result
+        }
+        BEGIN {
+            if (!valid_version(current) || !valid_version(latest)) exit 1
+            base = current
+            if (comparison + 0 < 0) base = latest
+            components(base, base_parts)
+            print comparison
+            print base_parts[1] "." increment_decimal(base_parts[2]) ".0"
         }
     '
 }
@@ -231,58 +275,7 @@ publish_workspace() {
 
 latest_version=$(registry_version "$package_name")
 
-version_plan=$(awk -v current="$current_version" -v latest="$latest_version" '
-    function valid_version(value) {
-        return value ~ /^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$/
-    }
-    function components(value, result) {
-        sub(/[+].*$/, "", value)
-        sub(/-.*/, "", value)
-        return split(value, result, "[.]")
-    }
-    function compare_component(left, right) {
-        if (length(left) < length(right)) return -1
-        if (length(left) > length(right)) return 1
-        if (("x" left) < ("x" right)) return -1
-        if (("x" left) > ("x" right)) return 1
-        return 0
-    }
-    function compare_versions(left, right, left_parts, right_parts, part, comparison) {
-        components(left, left_parts)
-        components(right, right_parts)
-        for (part = 1; part <= 3; part++) {
-            comparison = compare_component(left_parts[part], right_parts[part])
-            if (comparison != 0) return comparison
-        }
-        return 0
-    }
-    function increment_decimal(value, result, carry, position, digit, next_digit) {
-        result = ""
-        carry = 1
-        for (position = length(value); position > 0; position--) {
-            digit = substr(value, position, 1)
-            next_digit = index("0123456789", digit) - 1 + carry
-            if (next_digit == 10) {
-                next_digit = 0
-                carry = 1
-            } else {
-                carry = 0
-            }
-            result = substr("0123456789", next_digit + 1, 1) result
-        }
-        if (carry) result = "1" result
-        return result
-    }
-    BEGIN {
-        if (!valid_version(current) || !valid_version(latest)) exit 1
-        comparison = compare_versions(current, latest)
-        base = current
-        if (comparison < 0) base = latest
-        components(base, base_parts)
-        print comparison
-        print base_parts[1] "." increment_decimal(base_parts[2]) ".0"
-    }
-') || fail "could not parse current or published semantic version"
+version_plan=$(version_plan "$current_version" "$latest_version") || fail "could not parse current or published semantic version"
 
 current_vs_latest=$(printf '%s\n' "$version_plan" | sed -n '1p')
 next_version=$(printf '%s\n' "$version_plan" | sed -n '2p')

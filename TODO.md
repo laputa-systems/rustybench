@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 22
 
-### RUST-19 · P4 · Compare prereleases in the release script's version plan
-
-- **Area:** Tooling
-- **Where:** `tools/bump_minor_release.sh:234-281`
-- **Problem:** `version_plan`'s `compare_versions` strips prerelease and build metadata before comparing, so `1.4.0-rc.1` and `1.4.0` compare equal. `version_at_least` follows Cargo semver precedence; this second comparator still does not, so `current_vs_latest` can read 0 where semver says the local version is newer and the "local version is newer than published" guard diverges from the comparator the rest of the script uses.
-- **Recommendation:** Have both call sites use one semver-precedence comparator instead of two that disagree.
-- **Fix with:** `single-source-of-truth`
-- **Effort:** S (hours)
-
 ### RUST-20 · P4 · Keep a top-level comparison from swallowing consts commas
 
 - **Area:** Macros

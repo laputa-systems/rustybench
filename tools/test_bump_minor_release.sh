@@ -70,7 +70,22 @@ check_prerelease() {
     fi
 }
 
-if load_function version_at_least; then
+check_plan() {
+    expected_comparison=$1
+    expected_next=$2
+    current=$3
+    latest=$4
+    checks=$((checks + 1))
+    plan=$(version_plan "$current" "$latest")
+    comparison=$(printf '%s\n' "$plan" | sed -n '1p')
+    next=$(printf '%s\n' "$plan" | sed -n '2p')
+    if [ "$comparison" != "$expected_comparison" ] || [ "$next" != "$expected_next" ]; then
+        printf '%s\n' "FAIL version_plan $current $latest: expected $expected_comparison $expected_next, got $comparison $next" >&2
+        failures=$((failures + 1))
+    fi
+}
+
+if load_function compare_versions && load_function version_at_least; then
     check_comparison at_least 1.4.0 1.4.0
     check_comparison at_least 1.5.0 1.4.0
     check_comparison below 1.3.9 1.4.0
@@ -89,6 +104,18 @@ if load_function version_at_least; then
     check_comparison at_least 1.4.0-alpha.beta 1.4.0-alpha.1
 else
     printf '%s\n' "cannot check version_at_least: missing from $SCRIPT" >&2
+    failures=$((failures + 1))
+fi
+
+if load_function version_plan; then
+    check_plan 0 1.6.0 1.5.0 1.5.0
+    check_plan -1 1.6.0 1.4.9 1.5.0
+    check_plan 1 1.6.0 1.5.0-rc.1 1.4.9
+    check_plan 1 1.6.0 1.5.0 1.5.0-rc.1
+    check_plan -1 1.6.0 1.5.0-rc.1 1.5.0
+    check_plan 0 1.6.0 1.5.0-rc.1 1.5.0-rc.1
+else
+    printf '%s\n' "cannot check version_plan: missing from $SCRIPT" >&2
     failures=$((failures + 1))
 fi
 

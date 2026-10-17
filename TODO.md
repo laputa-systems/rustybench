@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-3 · P2 · Make the public list method list benchmarks
-
-- **Area:** Architecture
-- **Where:** `src/rustybench.rs:69-72`
-- **Problem:** `Rustybench::list_benches` is documented as printing registered functions, but it selects `Action::Test`. A running probe printed benchmark body output when calling this method.
-- **Recommendation:** Run `Action::List` from `list_benches`.
-- **Fix with:** `api-surface-and-module-boundaries`
-- **Effort:** S (hours)
-
 ### RUST-4 · P2 · Parse commas inside generic benchmark types
 
 - **Area:** Architecture

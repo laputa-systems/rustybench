@@ -45,6 +45,13 @@ mod attr_options {
     }
 }
 
+static LIST_PROBE_ITERS: AtomicUsize = AtomicUsize::new(0);
+
+#[crate::bench(crate = crate, ignore)]
+fn list_probe() {
+    LIST_PROBE_ITERS.fetch_add(1, SeqCst);
+}
+
 // These entries exist only to exercise registration metadata. Keeping them
 // ignored prevents the iteration-count test from benchmarking its fixtures.
 #[crate::bench(crate = crate, ignore)]
@@ -90,6 +97,13 @@ fn attribute_options_inherit_and_override() {
     assert_eq!(CHILD1_ITERS.load(SeqCst), 10);
     assert_eq!(CHILD2_ITERS.load(SeqCst), 2100);
     assert_eq!(CHILD3_ITERS.load(SeqCst), 50);
+}
+
+#[test]
+fn list_benches_does_not_run_benchmark_bodies() {
+    Rustybench::default().run_only_ignored().list_benches();
+
+    assert_eq!(LIST_PROBE_ITERS.load(SeqCst), 0);
 }
 
 #[test]

@@ -68,7 +68,7 @@ impl Rustybench {
 
     /// Print registered functions as if the `--list` flag was used.
     pub fn list_benches(&self) {
-        self.run_action(Action::Test);
+        self.run_action(Action::List);
     }
 
     /// Returns `true` if an entry at the given path should be considered for

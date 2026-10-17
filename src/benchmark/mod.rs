@@ -3,7 +3,7 @@ use std::{
     fmt,
     mem::{self, MaybeUninit},
     num::NonZeroUsize,
-    sync::Barrier,
+    sync::{Condvar, Mutex, PoisonError},
 };
 
 use crate::{
@@ -522,6 +522,73 @@ impl BenchMode {
     }
 }
 
+struct SampleBarrier {
+    participants: usize,
+    state: Mutex<SampleBarrierState>,
+    condvar: Condvar,
+}
+
+struct SampleBarrierState {
+    arrived: usize,
+    generation: usize,
+    cancelled: bool,
+}
+
+impl SampleBarrier {
+    fn new(participants: usize) -> Self {
+        Self {
+            participants,
+            state: Mutex::new(SampleBarrierState {
+                arrived: 0,
+                generation: 0,
+                cancelled: false,
+            }),
+            condvar: Condvar::new(),
+        }
+    }
+
+    fn wait(&self) {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+
+        if state.cancelled {
+            return;
+        }
+
+        let generation = state.generation;
+        state.arrived += 1;
+
+        if state.arrived == self.participants {
+            state.arrived = 0;
+            state.generation = generation.wrapping_add(1);
+            self.condvar.notify_all();
+            return;
+        }
+
+        while state.generation == generation && !state.cancelled {
+            state = self
+                .condvar
+                .wait(state)
+                .unwrap_or_else(PoisonError::into_inner);
+        }
+    }
+
+    fn cancel(&self) {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        state.cancelled = true;
+        self.condvar.notify_all();
+    }
+}
+
+struct CancelOnPanic<'a>(&'a SampleBarrier);
+
+impl Drop for CancelOnPanic<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.0.cancel();
+        }
+    }
+}
+
 /// `#[rustybench::bench]` loop context.
 ///
 /// Functions called within the benchmark loop should be `#[inline(always)]` to
@@ -696,7 +763,7 @@ impl<'a> BenchContext<'a> {
             let barrier = if is_single_thread {
                 None
             } else {
-                Some(Barrier::new(thread_count))
+                Some(SampleBarrier::new(thread_count))
             };
 
             // Sample loop helper:
@@ -867,7 +934,7 @@ impl<'a> BenchContext<'a> {
         drop_input: D,
     ) -> impl Fn(
         usize,
-        Option<&Barrier>,
+        Option<&SampleBarrier>,
         &mut dyn FnMut(&I),
         usize,
     ) -> (
@@ -899,9 +966,11 @@ impl<'a> BenchContext<'a> {
         //   time spent between samples.
 
         move |sample_size: usize,
-              barrier: Option<&Barrier>,
+              barrier: Option<&SampleBarrier>,
               count_input: &mut dyn FnMut(&I),
               thread_index: usize| {
+            let _cancel_on_panic = barrier.map(CancelOnPanic);
+
             let mut defer_store = DeferStore::<I, O>::default();
 
             // Only the main thread records process-wide counters. All worker
@@ -933,7 +1002,7 @@ impl<'a> BenchContext<'a> {
             // Monomorphize implementation to reduce code size.
             #[inline(never)]
             fn sync_impl<F>(
-                barrier: Option<&Barrier>,
+                barrier: Option<&SampleBarrier>,
                 is_start: bool,
                 on_boundary: Option<F>,
             ) -> Option<ProcessResourceSnapshot>

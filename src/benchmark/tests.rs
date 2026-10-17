@@ -409,6 +409,51 @@ mod run_count {
     }
 }
 
+#[test]
+fn worker_panic_releases_peers() {
+    use std::{sync::mpsc, time::Duration};
+
+    let (result_tx, result_rx) = mpsc::channel();
+
+    std::thread::Builder::new()
+        .name("rustybench-panic-test".into())
+        .spawn(move || {
+            let bench_options = BenchOptions {
+                sample_count: Some(SAMPLE_COUNT),
+                sample_size: Some(SAMPLE_SIZE),
+                ..BenchOptions::default()
+            };
+
+            let shared_context = SharedContext {
+                action: Action::Bench,
+                thread_pool: ThreadPool::new(),
+            };
+
+            let mut bench_context = BenchContext::new(
+                &shared_context,
+                &bench_options,
+                NonZeroUsize::new(2).unwrap(),
+            );
+
+            let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                Bencher::new(&mut bench_context).bench(|| {
+                    if std::thread::current().name() == Some("rustybench-1") {
+                        panic!("intentional benchmark panic");
+                    }
+                });
+            }))
+            .is_err();
+
+            _ = result_tx.send(panicked);
+        })
+        .unwrap();
+
+    match result_rx.recv_timeout(Duration::from_secs(10)) {
+        Ok(panicked) => assert!(panicked, "benchmark ended without reporting the worker panic"),
+        Err(_) => panic!("benchmark workers stayed blocked; the sample barrier did not cancel"),
+    }
+}
+
 mod no_input {
     use super::*;
 

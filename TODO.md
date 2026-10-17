@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-6 · P2 · Release parallel benchmark workers after a panic
-
-- **Area:** Concurrency
-- **Where:** `src/benchmark/mod.rs:953-977`, `src/util/thread/pool.rs:130-143,264-269`
-- **Problem:** Benchmark threads synchronize on a barrier after running the sample. If one benchmark closure panics first, the thread pool catches the panic, but its peers can remain blocked at the barrier and the main thread waits forever for the task to finish.
-- **Recommendation:** Make sample synchronization cancelable and propagate a worker panic to all participants before waiting for the pool.
-- **Fix with:** `lifecycle-concurrency`
-- **Effort:** M (days)
-
 ### RUST-7 · P2 · Clear input counters when setting a static counter
 
 - **Area:** Types

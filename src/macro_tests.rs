@@ -337,3 +337,12 @@ fn terse_listing_honors_nested_ignore_override() {
         "nested ignored benchmark should not appear:\n{stdout}"
     );
 }
+
+#[crate::bench(crate = crate, ignore, consts = [1 < 3, 2 < 3])]
+fn comparison_consts<const B: bool>() {}
+
+#[test]
+fn comparison_consts_split() {
+    let group = find_group("comparison_consts");
+    assert_eq!(group.generic_benches_iter().count(), 2);
+}

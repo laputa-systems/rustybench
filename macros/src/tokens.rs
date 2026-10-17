@@ -66,10 +66,18 @@ fn opens_generic(tokens: &[TokenTree], index: usize) -> bool {
     if token.as_char() != '<' || token.spacing() != Spacing::Alone {
         return false;
     }
-    !matches!(
-        index.checked_sub(1).and_then(|prev| punct(&tokens[prev])),
-        Some(prev) if prev.as_char() == '<' && prev.spacing() == Spacing::Joint
-    )
+    let Some(previous) = index.checked_sub(1) else {
+        return false;
+    };
+    match &tokens[previous] {
+        TokenTree::Ident(_) => true,
+        TokenTree::Punct(prev) if prev.as_char() == '>' => closes_generic(tokens, previous),
+        TokenTree::Punct(prev) if prev.as_char() == ':' => matches!(
+            previous.checked_sub(1).and_then(|before| punct(&tokens[before])),
+            Some(before) if before.as_char() == ':'
+        ),
+        _ => false,
+    }
 }
 
 fn closes_generic(tokens: &[TokenTree], index: usize) -> bool {

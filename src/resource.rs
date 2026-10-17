@@ -7,7 +7,11 @@
 //! diagnostic evidence, not a general-purpose procfs parser.
 
 #[cfg(target_os = "linux")]
-use std::{fs, io::Read};
+use std::{
+    ffi::{c_int, c_long},
+    fs,
+    io::Read,
+};
 
 use miniserde::{Deserialize, Serialize};
 
@@ -372,30 +376,24 @@ fn process_major_page_faults() -> Option<u64> {
 struct ProcessUsage {
     user: Timeval,
     system: Timeval,
-    minor_page_faults: CLong,
-    major_page_faults: CLong,
-    voluntary_context_switches: CLong,
-    involuntary_context_switches: CLong,
+    minor_page_faults: c_long,
+    major_page_faults: c_long,
+    voluntary_context_switches: c_long,
+    involuntary_context_switches: c_long,
 }
 
 #[cfg(target_os = "linux")]
 #[derive(Clone, Copy)]
 struct Timeval {
-    seconds: CLong,
-    microseconds: CLong,
+    seconds: c_long,
+    microseconds: c_long,
 }
-
-#[cfg(target_os = "linux")]
-type CInt = i32;
-
-#[cfg(target_os = "linux")]
-type CLong = i64;
 
 #[cfg(target_os = "linux")]
 #[repr(C)]
 struct RawTimeval {
-    seconds: CLong,
-    microseconds: CLong,
+    seconds: c_long,
+    microseconds: c_long,
 }
 
 #[cfg(target_os = "linux")]
@@ -403,25 +401,25 @@ struct RawTimeval {
 struct RawRusage {
     user: RawTimeval,
     system: RawTimeval,
-    max_rss: CLong,
-    integral_shared_memory_size: CLong,
-    integral_unshared_data_size: CLong,
-    integral_unshared_stack_size: CLong,
-    minor_page_faults: CLong,
-    major_page_faults: CLong,
-    swapped_out: CLong,
-    block_input_operations: CLong,
-    block_output_operations: CLong,
-    messages_sent: CLong,
-    messages_received: CLong,
-    signals_received: CLong,
-    voluntary_context_switches: CLong,
-    involuntary_context_switches: CLong,
+    max_rss: c_long,
+    integral_shared_memory_size: c_long,
+    integral_unshared_data_size: c_long,
+    integral_unshared_stack_size: c_long,
+    minor_page_faults: c_long,
+    major_page_faults: c_long,
+    swapped_out: c_long,
+    block_input_operations: c_long,
+    block_output_operations: c_long,
+    messages_sent: c_long,
+    messages_received: c_long,
+    signals_received: c_long,
+    voluntary_context_switches: c_long,
+    involuntary_context_switches: c_long,
 }
 
 #[cfg(target_os = "linux")]
 unsafe extern "C" {
-    fn getrusage(who: CInt, usage: *mut RawRusage) -> CInt;
+    fn getrusage(who: c_int, usage: *mut RawRusage) -> c_int;
 }
 
 #[cfg(target_os = "linux")]
@@ -462,7 +460,7 @@ fn timeval_ns(value: Timeval) -> Option<u64> {
 }
 
 #[cfg(target_os = "linux")]
-fn nonnegative(value: CLong) -> Option<u64> {
+fn nonnegative(value: c_long) -> Option<u64> {
     u64::try_from(value).ok()
 }
 
@@ -569,5 +567,28 @@ mod tests {
         assert!(snapshot.involuntary_context_switches.is_some());
         assert!(snapshot.minor_page_faults.is_some());
         assert!(snapshot.major_page_faults.is_some());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn raw_getrusage_layout_follows_c_long() {
+        use std::mem::{align_of, offset_of, size_of};
+
+        let long = size_of::<c_long>();
+
+        assert_eq!(size_of::<RawTimeval>(), 2 * long);
+        assert_eq!(align_of::<RawTimeval>(), align_of::<c_long>());
+        assert_eq!(offset_of!(RawTimeval, microseconds), long);
+
+        assert_eq!(
+            size_of::<RawRusage>(),
+            2 * size_of::<RawTimeval>() + 14 * long
+        );
+        assert_eq!(align_of::<RawRusage>(), align_of::<c_long>());
+        assert_eq!(offset_of!(RawRusage, max_rss), 2 * size_of::<RawTimeval>());
+        assert_eq!(
+            offset_of!(RawRusage, involuntary_context_switches),
+            2 * size_of::<RawTimeval>() + 13 * long
+        );
     }
 }

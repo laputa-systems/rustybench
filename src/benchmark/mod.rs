@@ -1048,9 +1048,6 @@ impl<'a> BenchContext<'a> {
                 if is_start {
                     let resource_start = on_boundary.and_then(|on_boundary| on_boundary());
 
-                    // The start snapshot and marker precede the release
-                    // barrier, so all workers' benchmark calls fall inside the
-                    // measured interval and the syscall trace.
                     if let Some(barrier) = barrier {
                         barrier.wait();
                     }
@@ -1065,11 +1062,8 @@ impl<'a> BenchContext<'a> {
 
             #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
             let mut sync_threads = |is_start: bool| {
-                let on_boundary = (thread_index == 0).then(|| || {
+                let on_boundary = (thread_index == 0).then_some(|| {
                     if is_start {
-                        // Capture the start snapshot before the release
-                        // barrier so every worker's sample falls inside the
-                        // measured interval.
                         let resource_start = ProcessResourceSnapshot::capture_unprofiled();
 
                         #[cfg(target_os = "linux")]
@@ -1091,10 +1085,9 @@ impl<'a> BenchContext<'a> {
                             original_task_name
                                 .as_ref()
                                 .expect("syscall tracing saved the original Linux task name"),
-                        ) {
-                            if syscall_marker_error.is_none() {
-                                syscall_marker_error = Some(error);
-                            }
+                        ) && syscall_marker_error.is_none()
+                        {
+                            syscall_marker_error = Some(error);
                         }
                     }
 

@@ -3,20 +3,6 @@
 The repository pins `nightly-2026-09-15` in [`rust-toolchain.toml`](../rust-toolchain.toml).
 CI runs Clippy and tests on Linux and macOS.
 
-## Source map
-
-| Topic | Source |
-| --- | --- |
-| Public API and macro examples | [`src/lib.rs`](../src/lib.rs) |
-| Runtime, registration, and benchmark execution | [`src/rustybench.rs`](../src/rustybench.rs), [`src/benchmark/`](../src/benchmark/) |
-| Attribute expansion | [`macros/src/`](../macros/src/) and [`src/entry/`](../src/entry/) |
-| CLI parsing and runner configuration | [`src/cli.rs`](../src/cli.rs), [`src/config/`](../src/config/) |
-| JSON reports and process resources | [`src/report.rs`](../src/report.rs), [`src/resource.rs`](../src/resource.rs) |
-| Timing and sample statistics | [`src/time/`](../src/time/), [`src/stats/`](../src/stats/) |
-| Allocation profiling | [`src/alloc.rs`](../src/alloc.rs) |
-| Baseline, diff, check, and syscall commands | [`src/bin/rustybench.rs`](../src/bin/rustybench.rs) |
-| Dogfood benchmark | [`benches/bench.rs`](../benches/bench.rs) |
-
 ## Maintainer targets
 
 The [`Makefile`](../Makefile) defines these local workflows:

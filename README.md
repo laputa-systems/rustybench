@@ -48,7 +48,7 @@ See the [benchmarking guide](docs/benchmarking.md) for registration, input
 ownership, counters, and allocation profiling. The [timing guide](docs/timing.md)
 explains sample timing and calibration.
 
-For Rust API documentation, see [docs.rs](https://docs.rs/rustybench/0.3.0).
+For Rust API documentation, see [docs.rs](https://docs.rs/rustybench/0.4.0).
 For help, visit the [project repository](https://github.com/laputa-systems/rustybench).
 
 ## License

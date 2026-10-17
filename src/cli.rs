@@ -261,6 +261,13 @@ where
             "--list conflicts with --test".to_owned().into(),
         ));
     }
+    if options.sample_count == Some(0) {
+        return Err(lexopt::Error::Custom(
+            "--sample-count must be greater than zero"
+                .to_owned()
+                .into(),
+        ));
+    }
 
     Ok(options)
 }
@@ -354,6 +361,15 @@ mod tests {
 
         let error = parse(&["--list", "--test"], &[]).unwrap_err().to_string();
         assert!(error.contains("--list conflicts with --test"));
+    }
+
+    #[test]
+    fn zero_sample_count_is_rejected() {
+        let error = parse(&["--sample-count", "0"], &[])
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("--sample-count"));
     }
 
     #[test]

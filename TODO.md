@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 17
 
-### RUST-1 · P2 · Reject zero sample counts before aggregating statistics
-
-- **Area:** Errors
-- **Where:** `src/benchmark/mod.rs:645-646,1265-1276`
-- **Problem:** `--sample-count 0` causes the benchmark loop to return without samples, but counter statistics still divide by `median_samples.len()`. Running `cargo bench --bench bench -- --sample-count 0 --sample-size 1 --format json workloads::sort_records` exits 101 with a division-by-zero panic.
-- **Recommendation:** Reject zero sample counts during option validation with an error that names the flag.
-- **Fix with:** `error-model`
-- **Effort:** S (hours)
-
 ### RUST-2 · P2 · Compare prerelease versions before skipping a publish
 
 - **Area:** Build

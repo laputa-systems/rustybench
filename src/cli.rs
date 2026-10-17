@@ -268,6 +268,13 @@ where
                 .into(),
         ));
     }
+    if options.sample_size == Some(0) {
+        return Err(lexopt::Error::Custom(
+            "--sample-size must be greater than zero"
+                .to_owned()
+                .into(),
+        ));
+    }
 
     Ok(options)
 }
@@ -370,6 +377,15 @@ mod tests {
             .to_string();
 
         assert!(error.contains("--sample-count"));
+    }
+
+    #[test]
+    fn zero_sample_size_is_rejected() {
+        let error = parse(&["--sample-size", "0"], &[])
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("--sample-size"));
     }
 
     #[test]

@@ -625,3 +625,24 @@ mod zst_input {
         assert_eq!(ZST_COUNT.load(SeqCst), 0);
     }
 }
+
+#[test]
+#[should_panic(expected = "sample size must be greater than zero")]
+fn options_with_zero_sample_size_are_rejected() {
+    let bench_options = BenchOptions {
+        sample_count: Some(1),
+        sample_size: Some(0),
+        ..BenchOptions::default()
+    };
+    let shared_context = SharedContext {
+        action: Action::Bench,
+        thread_pool: ThreadPool::new(),
+    };
+    let bench_context = BenchContext::new(
+        &shared_context,
+        &bench_options,
+        NonZeroUsize::new(1).unwrap(),
+    );
+
+    let _ = bench_context.initial_mode();
+}

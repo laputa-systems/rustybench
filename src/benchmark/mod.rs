@@ -1304,6 +1304,10 @@ impl<'a> BenchContext<'a> {
         if self.shared_context.action.is_test() {
             BenchMode::Test
         } else if let Some(sample_size) = self.options.sample_size {
+            assert!(
+                sample_size > 0,
+                "sample size must be greater than zero"
+            );
             BenchMode::Collect { sample_size }
         } else {
             BenchMode::Tune { sample_size: 1 }

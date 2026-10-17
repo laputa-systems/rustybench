@@ -1,15 +1,6 @@
 Prefix: RUST
 Next: 22
 
-### RUST-17 · P3 · Reject a zero sample size
-
-- **Area:** Config
-- **Where:** `src/cli.rs:264-271`, `src/benchmark/options.rs:12`, `src/benchmark/mod.rs:1309-1310,1383`
-- **Problem:** `--sample-count 0` is rejected, but `--sample-size 0` is accepted and the report path divides by the sample size. `cargo bench --bench bench -- --sample-size 0 --sample-count 1` panics with `attempt to divide by zero` at `src/benchmark/mod.rs:1383` instead of naming the flag. `BenchOptions::sample_size` and `Bencher::sample_size(0)` bypass the CLI check entirely.
-- **Recommendation:** Reject a zero sample size where it is parsed and where options are resolved, with the same message style as the sample-count check.
-- **Fix with:** `error-model`
-- **Effort:** S (hours)
-
 ### RUST-18 · P3 · Verify the rustup downloads in the Docker build
 
 - **Area:** Security

@@ -24,7 +24,7 @@ rustybench-macros = { version = "=0.4.0", path = "macros" }
 regex-lite = "0.1"
 lexopt = "0.3"
 miniserde = "0.1"
-quanta = { version = "0.12.6", optional = true }
+quanta = { version = "0.13", optional = true }
 
 [[bin]]
 name = "rustybench"

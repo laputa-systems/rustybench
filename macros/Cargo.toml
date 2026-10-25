@@ -10,7 +10,7 @@ edition = "2024"
 proc-macro = true
 
 [dependencies]
-syn = { version = "=3.0.3", default-features = false, features = [
+syn = { version = "3", default-features = false, features = [
     "full",
     "parsing",
     "proc-macro",

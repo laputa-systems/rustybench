@@ -1467,12 +1467,10 @@ impl<'a> BenchContext<'a> {
                     AllocTally {
                         count: alloc_info
                             .map(|info| info.max_count as f64)
-                            .unwrap_or_default()
-                            / sample_size,
+                            .unwrap_or_default(),
                         size: alloc_info
                             .map(|info| info.max_size as f64)
-                            .unwrap_or_default()
-                            / sample_size,
+                            .unwrap_or_default(),
                     }
                 },
                 slowest: {
@@ -1481,21 +1479,19 @@ impl<'a> BenchContext<'a> {
                     AllocTally {
                         count: alloc_info
                             .map(|info| info.max_count as f64)
-                            .unwrap_or_default()
-                            / sample_size,
+                            .unwrap_or_default(),
                         size: alloc_info
                             .map(|info| info.max_size as f64)
-                            .unwrap_or_default()
-                            / sample_size,
+                            .unwrap_or_default(),
                     }
                 },
                 median: AllocTally {
-                    count: alloc_median(&mut alloc_max_counts) / sample_size,
-                    size: alloc_median(&mut alloc_max_sizes) / sample_size,
+                    count: alloc_median(&mut alloc_max_counts),
+                    size: alloc_median(&mut alloc_max_sizes),
                 },
                 mean: AllocTally {
-                    count: alloc_total_max_count as f64 / total_count as f64,
-                    size: alloc_total_max_size as f64 / total_count as f64,
+                    count: alloc_total_max_count as f64 / sample_count as f64,
+                    size: alloc_total_max_size as f64 / sample_count as f64,
                 },
             }
             .transpose(),

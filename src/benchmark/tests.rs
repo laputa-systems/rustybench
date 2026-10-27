@@ -542,6 +542,54 @@ fn alloc_median_follows_allocation_order_not_time_order() {
     assert_eq!(record.max_alloc_bytes, 10);
 }
 
+#[test]
+fn max_alloc_bytes_stays_the_sample_peak() {
+    const ALLOC_BYTES: usize = 1 << 20;
+    const PEAK_SAMPLE_SIZE: u32 = 100;
+    const PEAK_SAMPLE_COUNT: u32 = 3;
+
+    let bench_options = BenchOptions {
+        sample_count: Some(PEAK_SAMPLE_COUNT),
+        sample_size: Some(PEAK_SAMPLE_SIZE),
+        ..BenchOptions::default()
+    };
+    let shared_context = SharedContext {
+        action: Action::Bench,
+        thread_pool: ThreadPool::new(),
+    };
+    let mut bench_context = BenchContext::new(
+        &shared_context,
+        &bench_options,
+        NonZeroUsize::new(1).unwrap(),
+    );
+
+    Bencher::new(&mut bench_context).bench(|| {
+        let buffer = Vec::<u8>::with_capacity(ALLOC_BYTES);
+        black_box_drop(buffer);
+    });
+
+    let stats = bench_context.compute_stats();
+    let record = crate::report::BenchmarkRecord::from_stats("peak", &stats);
+    let alloc_bytes = ALLOC_BYTES as u64;
+    let divided = alloc_bytes / u64::from(PEAK_SAMPLE_SIZE);
+
+    assert!(
+        record.alloc_bytes >= alloc_bytes / 2 && record.alloc_bytes <= alloc_bytes * 2,
+        "alloc_bytes {} left the per-iteration median of {alloc_bytes}",
+        record.alloc_bytes,
+    );
+    assert!(
+        record.max_alloc_bytes >= alloc_bytes / 2 && record.max_alloc_bytes <= alloc_bytes * 2,
+        "max_alloc_bytes {} is not on the order of the {alloc_bytes} byte allocation",
+        record.max_alloc_bytes,
+    );
+    assert!(
+        record.max_alloc_bytes > divided * 8,
+        "max_alloc_bytes {} matches {alloc_bytes} divided by sample_size {PEAK_SAMPLE_SIZE}",
+        record.max_alloc_bytes,
+    );
+}
+
 mod no_input {
     use super::*;
 

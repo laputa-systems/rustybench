@@ -4,9 +4,9 @@ Rustybench is a benchmark runner for Rust on macOS and Linux. It measures
 functions registered with `#[rustybench::bench]`, reports time and allocation
 statistics, and can collect JSON baselines for later comparison.
 
-Rustybench requires nightly Rust 1.100 or newer. Install the latest nightly
-with `rustup toolchain install nightly`, then use `cargo +nightly` for commands
-that build or run your benchmarks.
+Rustybench requires nightly Rust 1.100 or newer. This repository pins
+`nightly-2026-09-15` in `rust-toolchain.toml`. Use `cargo +nightly` for
+commands that build or run your benchmarks.
 
 ## Add a benchmark
 
@@ -133,29 +133,15 @@ Rustybench's control are not counted.
 
 ## Run and tune benchmarks
 
-Runner options and matching environment variables are:
+Run `cargo +nightly bench --bench example -- --help` for the runner options.
+Each option has a matching `RUSTYBENCH_*` variable. The names and value types
+are in [`src/cli.rs`](src/cli.rs). Command-line values override environment
+values.
 
-| Option | Environment variable | Purpose |
-| --- | --- | --- |
-| `--sample-count` | `RUSTYBENCH_SAMPLE_COUNT` | Number of statistical samples. Defaults to 100. |
-| `--sample-size` | `RUSTYBENCH_SAMPLE_SIZE` | Iterations per sample. Rustybench tunes this when omitted. |
-| `--threads` | `RUSTYBENCH_THREADS` | Thread counts, as a comma-separated list. |
-| `--min-time` | `RUSTYBENCH_MIN_TIME` | Minimum time spent per benchmark, in seconds. |
-| `--max-time` | `RUSTYBENCH_MAX_TIME` | Maximum time spent per benchmark, in seconds. |
-| `--skip-ext-time` | `RUSTYBENCH_SKIP_EXT_TIME` | Exclude time outside the benchmark closure from time limits. |
-| `--sort` | `RUSTYBENCH_SORT` | Sort by `kind`, `name`, or `location`. |
-| `--sortr` | `RUSTYBENCH_SORTR` | Sort in reverse by `kind`, `name`, or `location`. |
-| `--items-count` | `RUSTYBENCH_ITEMS_COUNT` | Set the item throughput count. |
-| `--bytes-count` | `RUSTYBENCH_BYTES_COUNT` | Set the byte throughput count. |
-| `--bytes-format` | `RUSTYBENCH_BYTES_FORMAT` | Show byte rates in `decimal` or `binary` units. |
-| `--chars-count` | `RUSTYBENCH_CHARS_COUNT` | Set the character throughput count. |
-| `--cycles-count` | `RUSTYBENCH_CYCLES_COUNT` | Set the cycle throughput count. |
-
-Command-line values override environment values. Positional filters select
-benchmark names with regular expressions. Pass `--exact` for exact name
-matches, or use `--skip FILTER` to exclude matching names. `--ignored` runs
-only ignored benchmarks. `--include-ignored` runs ignored and regular
-benchmarks.
+Positional filters select benchmark names with regular expressions. Pass
+`--exact` for exact name matches, or use `--skip FILTER` to exclude matching
+names. `--ignored` runs only ignored benchmarks. `--include-ignored` runs
+ignored and regular benchmarks.
 
 Rustybench takes each sample with a monotonic clock and a start and end fence.
 The default clock is `std::time::Instant`. Rustybench calibrates loop and

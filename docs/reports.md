@@ -21,8 +21,9 @@ Linux records include per-process user and system CPU nanoseconds, voluntary and
 involuntary context switches, minor and major page faults, and optional RSS and
 PSS byte snapshots from bounded `/proc` reads. Other platforms report the
 Linux-only measurements as unsupported. Missing metrics remain unavailable,
-not zero. Resource counters are medians of per-sample deltas. Older schema-1
-reports without `process_resources` remain readable.
+not zero. CPU time, context switches, and page faults are medians of
+per-sample deltas. RSS and PSS are medians of the end-of-sample snapshots.
+Older schema-1 reports without `process_resources` remain readable.
 
 ## Baseline JSON
 

@@ -15,9 +15,11 @@ tunes the iterations per sample. With threaded benchmarks, sample count is
 rounded up to a multiple of the thread count. Byte rates use decimal units by
 default.
 
-Cargo harness arguments `--bench`, `--nocapture`, and `--show-output` are
-accepted for compatibility. `--test` and `--bench` can also be passed explicitly
-after Cargo's separator.
+`cargo bench` passes `--bench`, which selects a timed run. Without `--bench`,
+the runner performs one untimed iteration per benchmark, which is what
+`cargo test --benches` expects. `--format json` is printed only for a timed
+run. `--nocapture` and `--show-output` are accepted and ignored. `--test` and
+`--bench` can also be passed explicitly after Cargo's separator.
 
 Set the matching `RUSTYBENCH_*` environment variable to configure a runner
 option. [src/cli.rs](../src/cli.rs) lists the supported names and value types.
@@ -52,9 +54,9 @@ one iteration per sample.
 file as a set of absolute metric ceilings and requires both files to contain
 exactly the same benchmark names.
 
-Set `RUSTYBENCH_BENCH_RUSTFLAGS` to add Rust flags to the child benchmark
-command launched by `baseline`; this does not change flags for the `rustybench`
-tool itself.
+Set `RUSTYBENCH_BENCH_RUSTFLAGS` to replace the child benchmark command's
+`RUSTFLAGS`. Inherited `RUSTFLAGS` are not kept. This does not change flags
+for the `rustybench` tool itself.
 
 ## Syscall diagnostic
 

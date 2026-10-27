@@ -16,7 +16,7 @@ MACROS_MANIFEST=$ROOT/macros/Cargo.toml
 LOCKFILE=$ROOT/Cargo.lock
 cd "$ROOT"
 
-for command_name in awk cargo cp dirname git mkdir mv rm sed; do
+for command_name in awk cargo cp dirname git grep mkdir mv rm sed; do
     command -v "$command_name" >/dev/null 2>&1 || fail "required command not found: $command_name"
 done
 
@@ -111,12 +111,42 @@ macros_version=$(printf '%s\n' "$macros_metadata" | sed -n '2p')
 [ -n "$macros_name" ] && [ -n "$macros_version" ] || fail "macros package metadata is incomplete"
 [ "$macros_version" = "$current_version" ] || fail "workspace member versions must match: $package_name is $current_version but $macros_name is $macros_version"
 
+ensure_registry_auth() {
+    # Preflight before any registry query or file edit: a missing login
+    # otherwise surfaces only at the first authenticated step. Ownership
+    # of each crate is still validated by the cargo owner checks below
+    # before anything is edited.
+    if [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || [ -n "${CARGO_REGISTRIES_CRATES_IO_TOKEN:-}" ]; then
+        return 0
+    fi
+    if [ -n "${CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS:-}" ]; then
+        return 0
+    fi
+    cargo_home=${CARGO_HOME:-$HOME/.cargo}
+    for config in "$cargo_home/config.toml" "$cargo_home/config"; do
+        if [ -f "$config" ] && grep -q 'credential.provider' "$config" 2>/dev/null; then
+            return 0
+        fi
+    done
+    for credentials in "$cargo_home/credentials.toml" "$cargo_home/credentials"; do
+        if [ -f "$credentials" ] && grep -q '^[[:space:]]*token[[:space:]]*=' "$credentials" 2>/dev/null; then
+            return 0
+        fi
+    done
+    fail "no Cargo registry token found; run \`cargo login\` (or set CARGO_REGISTRY_TOKEN) before publishing"
+}
+
+# Fail fast without a registry login before any registry query or file edit.
+ensure_registry_auth
+
 # Cargo checks registry ownership before the script edits any release file.
-cargo owner --list "$package_name"
-cargo owner --list "$macros_name"
+# Cargo output is captured so successful checks stay silent; failures
+# report it.
+owner_output=$(cargo owner --list "$package_name" 2>&1) || fail "could not verify ownership of $package_name: $owner_output"
+owner_output=$(cargo owner --list "$macros_name" 2>&1) || fail "could not verify ownership of $macros_name: $owner_output"
 
 registry_version() {
-    search_result=$(cargo search "$1" --limit 1) || fail "could not query the default Cargo registry"
+    search_result=$(cargo search "$1" --limit 1 2>&1) || fail "could not query the default Cargo registry for $1: $search_result"
     printf '%s\n' "$search_result" | awk -v package_name="$1" '
         $1 == package_name && $2 == "=" && $3 ~ /^".+"$/ {
             version = substr($3, 2, length($3) - 2)

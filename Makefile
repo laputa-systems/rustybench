@@ -2,7 +2,7 @@ test:
 	cargo test --locked
 
 lint:
-	cargo clippy --fix --allow-dirty --all-targets --all-features -- --deny warnings
+	cargo clippy --all-targets --all-features -- --deny warnings
 
 .PHONY: test lint publish
 

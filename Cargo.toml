@@ -12,19 +12,11 @@ exclude = [
     "tools/bump_minor_release.sh",
 ]
 
-[features]
-default = []
-# Experimental timing backend. This is intentionally excluded from the
-# default build; the default timing contract remains std::time::Instant with
-# the full fence boundary.
-quanta-timer = ["dep:quanta"]
-
 [dependencies]
 rustybench-macros = { version = "=0.4.0", path = "macros" }
 regex-lite = "0.1"
 lexopt = "0.3"
 miniserde = "0.1"
-quanta = { version = "0.13", optional = true }
 
 [[bin]]
 name = "rustybench"

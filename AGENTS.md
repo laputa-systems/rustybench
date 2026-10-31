@@ -13,7 +13,7 @@ Rust benchmark runner for macOS and Linux.
 
 - Supported targets are macOS and Linux.
 - The crate and runner are named `rustybench` and `Rustybench`; renamed dependencies must set `crate = ...` on the benchmark attribute.
-- The default timer is `std::time::Instant` with the full fence boundary; `quanta-timer` is experimental.
+- The timer is `std::time::Instant` with the full fence boundary.
 - JSON reports and baselines use schema 1; additive fields stay optional, and breaking field changes require a schema bump.
 - Baseline files are JSON.
 

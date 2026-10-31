@@ -1,10 +1,9 @@
 # Timing
 
 Rustybench times each sample with a monotonic clock and a start/end fence
-boundary. The default clock is `std::time::Instant`; the optional
-`quanta-timer` feature replaces only the clock source and keeps the same fence
-sequence. The feature is experimental. See the [timestamp implementation](../src/time/timestamp/mod.rs)
-and [fences](../src/time/fence.rs).
+boundary. The clock is `std::time::Instant`. See the
+[timestamp implementation](../src/time/timestamp/mod.rs) and
+[fences](../src/time/fence.rs).
 
 The conservative default remains because direct clocks and compiler-only fences
 did not show a reliable end-to-end improvement.

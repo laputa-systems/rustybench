@@ -16,6 +16,28 @@ MACROS_MANIFEST=$ROOT/macros/Cargo.toml
 LOCKFILE=$ROOT/Cargo.lock
 cd "$ROOT"
 
+# Publish verification resolves the packaged crate's registry dependencies
+# through the local Cargo configuration. A replacement of crates.io only
+# holds versions already imported into it, while the release needs every
+# dependency from crates.io itself, so run those commands from the
+# filesystem root, where no repository config applies.
+PUBLISH_CWD=/
+REPO_TOOLCHAIN=
+if command -v rustup >/dev/null 2>&1; then
+    REPO_TOOLCHAIN=$(rustup show active-toolchain 2>/dev/null | awk '{ print $1 }') || REPO_TOOLCHAIN=
+fi
+
+publish_cargo() {
+    (
+        cd "$PUBLISH_CWD" || exit 1
+        if [ -n "$REPO_TOOLCHAIN" ]; then
+            RUSTUP_TOOLCHAIN=$REPO_TOOLCHAIN
+            export RUSTUP_TOOLCHAIN
+        fi
+        cargo "$@" --manifest-path "$ROOT/Cargo.toml"
+    )
+}
+
 for command_name in awk cargo cp dirname git grep mkdir mv rm sed; do
     command -v "$command_name" >/dev/null 2>&1 || fail "required command not found: $command_name"
 done
@@ -142,11 +164,11 @@ ensure_registry_auth
 # Cargo checks registry ownership before the script edits any release file.
 # Cargo output is captured so successful checks stay silent; failures
 # report it.
-owner_output=$(cargo owner --list "$package_name" 2>&1) || fail "could not verify ownership of $package_name: $owner_output"
-owner_output=$(cargo owner --list "$macros_name" 2>&1) || fail "could not verify ownership of $macros_name: $owner_output"
+owner_output=$(cargo owner --list "$package_name" --registry crates-io 2>&1) || fail "could not verify ownership of $package_name: $owner_output"
+owner_output=$(cargo owner --list "$macros_name" --registry crates-io 2>&1) || fail "could not verify ownership of $macros_name: $owner_output"
 
 registry_version() {
-    search_result=$(cargo search "$1" --limit 1 2>&1) || fail "could not query the default Cargo registry for $1: $search_result"
+    search_result=$(cargo search "$1" --limit 1 --registry crates-io 2>&1) || fail "could not query crates.io for $1: $search_result"
     printf '%s\n' "$search_result" | awk -v package_name="$1" '
         $1 == package_name && $2 == "=" && $3 ~ /^".+"$/ {
             version = substr($3, 2, length($3) - 2)
@@ -156,7 +178,7 @@ registry_version() {
             if (matches != 1) exit 1
             print version
         }
-    ' || fail "could not find $1 on the default Cargo registry"
+    ' || fail "could not find $1 on crates.io"
 }
 
 compare_versions() {
@@ -291,7 +313,7 @@ publish_package() {
         printf '%s\n' "$1 $2 is already published; skipping"
         return 0
     fi
-    cargo publish -p "$1"
+    publish_cargo publish -p "$1" --registry crates-io
 }
 
 publish_workspace() {
@@ -417,7 +439,7 @@ mv "$temporary_manifest" "$MANIFEST" || fail "could not install updated $MANIFES
 temporary_manifest=
 
 cargo check --workspace --quiet
-cargo publish -p "$macros_name" --dry-run --allow-dirty
+publish_cargo publish -p "$macros_name" --dry-run --allow-dirty --registry crates-io
 git add -- Cargo.toml Cargo.lock macros/Cargo.toml
 git commit -m "$release_subject"
 release_committed=1
@@ -427,5 +449,5 @@ git tag -a "$next_tag" -m "$package_name $next_version"
 # dependency order after the release commit; the retry path above converges
 # the same way when re-run after a partial publish.
 publish_package "$macros_name" "$next_version"
-cargo publish -p "$package_name" --dry-run --allow-dirty
+publish_cargo publish -p "$package_name" --dry-run --allow-dirty --registry crates-io
 publish_package "$package_name" "$next_version"

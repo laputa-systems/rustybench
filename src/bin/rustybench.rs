@@ -1142,6 +1142,46 @@ mod tests {
         }
     }
 
+    #[test]
+    fn baseline_wire_format_is_stable() {
+        let record = |run_median_ns| BaselineRecord {
+            name: "a::b".to_owned(),
+            median_ns: 5,
+            alloc_count: 1,
+            alloc_bytes: 2,
+            max_alloc_count: 3,
+            max_alloc_bytes: 4,
+            run_median_ns,
+        };
+        let mut file = baseline_file(vec![record(Some(vec![5, 6])), record(None)]);
+        file.sample_count = Some(7);
+        let json = miniserde::json::to_string(&file);
+        assert_eq!(
+            json,
+            r#"{"schema":1,"host":"test","platform":"test","arch":"test","mode":"test","warmup_runs":0,"measured_runs":1,"sample_count":7,"sample_size":null,"wall_ns":1,"warmup_wall_ns":0,"measured_wall_ns":1,"suite_wall_ns":[1],"benchmarks":[{"name":"a::b","median_ns":5,"alloc_count":1,"alloc_bytes":2,"max_alloc_count":3,"max_alloc_bytes":4,"run_median_ns":[5,6]},{"name":"a::b","median_ns":5,"alloc_count":1,"alloc_bytes":2,"max_alloc_count":3,"max_alloc_bytes":4,"run_median_ns":null}]}"#
+        );
+        let decoded = parse_baseline(&json, Path::new("baseline.json")).unwrap();
+        assert_eq!(decoded[0].run_median_ns, Some(vec![5, 6]));
+        assert_eq!(decoded[1].run_median_ns, None);
+    }
+
+    #[test]
+    fn existing_baseline_files_remain_readable() {
+        let legacy = r#"{"schema":1,"host":"h","platform":"p","arch":"a","mode":"m","warmup_runs":1,"measured_runs":2,"wall_ns":3,"warmup_wall_ns":1,"measured_wall_ns":2,"suite_wall_ns":[1,2],"benchmarks":[{"name":"x","median_ns":1,"alloc_count":2,"alloc_bytes":3,"max_alloc_count":4,"max_alloc_bytes":5}]}"#;
+        let records = parse_baseline(legacy, Path::new("legacy.json")).unwrap();
+        assert_eq!(records[0].name, "x");
+        assert_eq!(records[0].max_alloc_bytes, 5);
+        assert_eq!(records[0].run_median_ns, None);
+
+        let nulls = r#"{"schema":1,"host":"h","platform":"p","arch":"a","mode":"m","warmup_runs":1,"measured_runs":2,"sample_count":null,"sample_size":9,"wall_ns":3,"warmup_wall_ns":1,"measured_wall_ns":2,"suite_wall_ns":[1,2],"future_field":{"a":[1]},"benchmarks":[{"name":"x","median_ns":1,"alloc_count":2,"alloc_bytes":3,"max_alloc_count":4,"max_alloc_bytes":5,"run_median_ns":null}]}"#;
+        let records = parse_baseline(nulls, Path::new("nulls.json")).unwrap();
+        assert_eq!(records[0].run_median_ns, None);
+
+        let unsupported = legacy.replace("\"schema\":1", "\"schema\":2");
+        assert!(parse_baseline(&unsupported, Path::new("v2.json")).is_err());
+        assert!(parse_baseline("{", Path::new("bad.json")).is_err());
+    }
+
     fn temporary_baseline_files(
         budget_records: Vec<BaselineRecord>,
         candidate_records: Vec<BaselineRecord>,

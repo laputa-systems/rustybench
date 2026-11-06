@@ -107,6 +107,10 @@ mod tests {
         let json = miniserde::json::to_string(&report);
         assert!(json.contains("\"process_resources\""));
         assert!(json.contains("\"status\":\"unsupported\""));
+        assert_eq!(
+            json,
+            r#"{"schema":1,"benchmarks":[{"name":"suite::work::input","median_ns":42,"alloc_count":3,"alloc_bytes":96,"max_alloc_count":2,"max_alloc_bytes":64,"sample_count":10,"iter_count":1000,"process_resources":{"status":"unsupported","user_cpu_ns":null,"system_cpu_ns":null,"voluntary_context_switches":null,"involuntary_context_switches":null,"minor_page_faults":null,"major_page_faults":null,"memory_status":"unsupported","rss_bytes":null,"pss_bytes":null}}]}"#
+        );
         let decoded: BenchmarkReport = miniserde::json::from_str(&json).unwrap();
         assert_eq!(decoded, report);
     }
@@ -129,5 +133,18 @@ mod tests {
 
         let report: BenchmarkReport = miniserde::json::from_str(json).unwrap();
         assert_eq!(report.benchmarks[0].process_resources, None);
+    }
+
+    #[test]
+    fn report_with_null_resources_and_unknown_fields_remains_readable() {
+        let json = r#"{"schema":1,"extra":true,"benchmarks":[{"name":"n","median_ns":1,"alloc_count":2,"alloc_bytes":3,"max_alloc_count":4,"max_alloc_bytes":5,"sample_count":6,"iter_count":7,"process_resources":null,"extra":[1]},{"name":"m","median_ns":1,"alloc_count":2,"alloc_bytes":3,"max_alloc_count":4,"max_alloc_bytes":5,"sample_count":6,"iter_count":7,"process_resources":{"status":"supported","user_cpu_ns":1,"system_cpu_ns":null,"voluntary_context_switches":3,"involuntary_context_switches":4,"minor_page_faults":5,"major_page_faults":6,"memory_status":"not_applicable","rss_bytes":7,"pss_bytes":null}}]}"#;
+        let report: BenchmarkReport = miniserde::json::from_str(json).unwrap();
+        assert_eq!(report.benchmarks[0].process_resources, None);
+        let resources = report.benchmarks[1].process_resources.as_ref().unwrap();
+        assert_eq!(resources.status, ResourceStatus::Supported);
+        assert_eq!(resources.memory_status, ResourceStatus::NotApplicable);
+        assert_eq!(resources.system_cpu_ns, None);
+        assert_eq!(resources.rss_bytes, Some(7));
+        assert_eq!(miniserde::json::to_string(&report).matches("null").count(), 3);
     }
 }

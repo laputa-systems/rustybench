@@ -159,7 +159,8 @@ impl Rustybench {
         if self.output_format == OutputFormat::Json && action.is_bench() {
             println!(
                 "{}",
-                miniserde::json::to_string(&BenchmarkReport::new(report))
+                deser_json::to_string(&BenchmarkReport::new(report))
+                    .expect("benchmark report serializes")
             );
         }
     }

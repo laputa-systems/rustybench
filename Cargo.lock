@@ -3,6 +3,44 @@
 version = 4
 
 [[package]]
+name = "deser"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d76d6df21374422dad94c9ee880dcb7b7038fa853d8c98677cc6d17b01866945"
+dependencies = [
+ "deser-core",
+ "deser-derive",
+]
+
+[[package]]
+name = "deser-core"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02f55809b557fd7b0edb219ea51b4368ed8bc03794d4850ffc20c7152139e7b0"
+
+[[package]]
+name = "deser-derive"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27b603a9e0a47996eb048e2e3a74cf505c283e94fa9f4bcb6efa9bc7824dd879"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "deser-json"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b2e6b0b2ca4daf985f1de5554bf586290e2eab7f954858cf6a98466e942ba27"
+dependencies = [
+ "deser-core",
+ "itoa",
+ "zmij",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13,28 +51,6 @@ name = "lexopt"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "803ec87c9cfb29b9d2633f20cba1f488db3fd53f2158b1024cbefb47ba05d413"
-
-[[package]]
-name = "mini-internal"
-version = "0.1.46"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34dea53b00d87f21b1535cbef93765c75f159dbbfeef16152f0b6b3bf28f3bb6"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "miniserde"
-version = "0.1.46"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8f82621301d3b99a1542736de96e5df69865b235987d6470b28c7aa670cfeb1"
-dependencies = [
- "itoa",
- "mini-internal",
- "zmij",
-]
 
 [[package]]
 name = "proc-macro2"
@@ -64,8 +80,9 @@ checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
 name = "rustybench"
 version = "0.4.0"
 dependencies = [
+ "deser",
+ "deser-json",
  "lexopt",
- "miniserde",
  "regex-lite",
  "rustybench-macros",
 ]

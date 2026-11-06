@@ -10,7 +10,7 @@ use std::{
 };
 
 use lexopt::{Parser, prelude::*};
-use miniserde::{Deserialize, Serialize};
+use deser::{Deserialize, Serialize};
 
 const BASELINE_SCHEMA: u32 = 1;
 const SYSCALL_SCHEMA: u32 = 1;
@@ -394,7 +394,7 @@ fn run_benchmark(
         .lines()
         .rev()
         .find_map(|line| {
-            let report = miniserde::json::from_str::<BenchmarkReport>(line.trim()).ok()?;
+            let report = deser_json::from_str::<BenchmarkReport>(line.trim()).ok()?;
             (report.schema == BASELINE_SCHEMA).then_some(report)
         })
         .ok_or_else(|| {
@@ -577,7 +577,7 @@ fn read_baseline(path: &Path) -> Result<Vec<BaselineRecord>, String> {
 }
 
 fn parse_baseline(contents: &str, path: &Path) -> Result<Vec<BaselineRecord>, String> {
-    let baseline: BaselineFile = miniserde::json::from_str(contents)
+    let baseline: BaselineFile = deser_json::from_str(contents)
         .map_err(|error| format!("invalid baseline JSON {}: {error}", path.display()))?;
     if baseline.schema != BASELINE_SCHEMA {
         return Err(format!("unsupported baseline schema {}", baseline.schema));
@@ -600,7 +600,8 @@ fn write_json_atomic(path: &Path, value: &BaselineFile) -> Result<(), String> {
         .write(true)
         .open(&temporary)
         .map_err(|error| format!("could not create {}: {error}", temporary.display()))?;
-    let serialized = miniserde::json::to_string(value);
+    let serialized = deser_json::to_string(value)
+        .map_err(|error| format!("could not serialize {}: {error}", path.display()))?;
     if let Err(error) = file
         .write_all(serialized.as_bytes())
         .and_then(|_| file.flush())
@@ -894,7 +895,7 @@ fn run_syscall_diagnostic(
         "cargo bench --bench bench --no-run --message-format=json",
     )?
     .lines()
-    .filter_map(|line| miniserde::json::from_str::<CargoArtifact>(line).ok())
+    .filter_map(|line| deser_json::from_str::<CargoArtifact>(line).ok())
     .find_map(|artifact| {
         if artifact.reason == "compiler-artifact" && artifact.target.name == "bench" {
             artifact.executable
@@ -953,7 +954,7 @@ fn run_syscall_diagnostic(
             timing: false,
             benchmarks,
         };
-        println!("{}", miniserde::json::to_string(&report));
+        println!("{}", deser_json::to_string(&report).expect("syscall report serializes"));
     }
     Ok(())
 }
@@ -1155,7 +1156,7 @@ mod tests {
         };
         let mut file = baseline_file(vec![record(Some(vec![5, 6])), record(None)]);
         file.sample_count = Some(7);
-        let json = miniserde::json::to_string(&file);
+        let json = deser_json::to_string(&file).unwrap();
         assert_eq!(
             json,
             r#"{"schema":1,"host":"test","platform":"test","arch":"test","mode":"test","warmup_runs":0,"measured_runs":1,"sample_count":7,"sample_size":null,"wall_ns":1,"warmup_wall_ns":0,"measured_wall_ns":1,"suite_wall_ns":[1],"benchmarks":[{"name":"a::b","median_ns":5,"alloc_count":1,"alloc_bytes":2,"max_alloc_count":3,"max_alloc_bytes":4,"run_median_ns":[5,6]},{"name":"a::b","median_ns":5,"alloc_count":1,"alloc_bytes":2,"max_alloc_count":3,"max_alloc_bytes":4,"run_median_ns":null}]}"#
@@ -1559,14 +1560,14 @@ mod tests {
             }],
         };
 
-        let json = miniserde::json::to_string(&report);
+        let json = deser_json::to_string(&report).unwrap();
 
         assert_eq!(
             json,
             r#"{"schema":1,"diagnostic":true,"timing":false,"benchmarks":[{"name":"group::bench","marker_status":"bounded","calls":3,"errors":1,"syscalls":[{"name":"openat","calls":3,"errors":1}]}]}"#
         );
         assert_eq!(
-            miniserde::json::from_str::<SyscallReport>(&json).unwrap(),
+            deser_json::from_str::<SyscallReport>(&json).unwrap(),
             report
         );
     }

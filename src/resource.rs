@@ -13,18 +13,18 @@ use std::{
     io::Read,
 };
 
-use miniserde::{Deserialize, Serialize};
+use deser::{Deserialize, Serialize};
 
 #[cfg(target_os = "linux")]
 const PROC_FILE_LIMIT: usize = 64 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum ResourceStatus {
-    #[serde(rename = "supported")]
+    #[deser(rename = "supported")]
     Supported,
-    #[serde(rename = "unsupported")]
+    #[deser(rename = "unsupported")]
     Unsupported,
-    #[serde(rename = "not_applicable")]
+    #[deser(rename = "not_applicable")]
     NotApplicable,
 }
 

@@ -16,7 +16,8 @@ exclude = [
 rustybench-macros = { version = "=0.4.0", path = "macros" }
 regex-lite = "0.1"
 lexopt = "0.3"
-miniserde = "0.1"
+deser = { version = "0.10.2", default-features = false, features = ["derive"] }
+deser-json = { version = "0.10.2", default-features = false }
 
 [[bin]]
 name = "rustybench"

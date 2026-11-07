@@ -18,6 +18,7 @@ regex-lite = "0.1"
 lexopt = "0.3"
 deser = { version = "0.10.2", default-features = false, features = ["derive"] }
 deser-json = { version = "0.10.2", default-features = false }
+rustc-hash = "2"
 
 [[bin]]
 name = "rustybench"

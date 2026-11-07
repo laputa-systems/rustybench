@@ -549,13 +549,13 @@ pub fn black_box_drop<T>(dummy: T) {
 ///
 /// The [`types`] and [`args`] options can be combined to benchmark _T_ × _A_
 /// scenarios. The following example benchmarks the [`FromIterator`]
-/// implementations for [`Vec`], [`BTreeSet`], and [`HashSet`]:
+/// implementations for [`Vec`], [`VecDeque`], and [`HashSet`]:
 ///
 /// ```
-/// use std::collections::{BTreeSet, HashSet};
+/// use std::collections::{HashSet, VecDeque};
 ///
 /// #[rustybench::bench(
-///     types = [Vec<i32>, BTreeSet<i32>, HashSet<i32>],
+///     types = [Vec<i32>, VecDeque<i32>, HashSet<i32>],
 ///     args = [0, 2, 4, 16, 256, 4096],
 /// )]
 /// fn from_range<T>(n: i32) -> T
@@ -566,7 +566,7 @@ pub fn black_box_drop<T>(dummy: T) {
 /// }
 /// ```
 ///
-/// [`BTreeSet`]: std::collections::BTreeSet
+/// [`VecDeque`]: std::collections::VecDeque
 /// [`HashSet`]: std::collections::HashSet
 ///
 /// ## `sample_count`

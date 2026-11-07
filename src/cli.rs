@@ -281,12 +281,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use rustc_hash::FxHashMap;
 
     use super::*;
 
     fn parse(arguments: &[&str], values: &[(&str, &str)]) -> Result<Options, lexopt::Error> {
-        let values: BTreeMap<_, _> = values
+        let values: FxHashMap<_, _> = values
             .iter()
             .map(|&(name, value)| (name.to_owned(), OsString::from(value)))
             .collect();

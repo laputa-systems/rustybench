@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeMap,
     env,
     ffi::{OsStr, OsString},
     fs::{self, OpenOptions},
@@ -11,6 +10,7 @@ use std::{
 
 use lexopt::{Parser, prelude::*};
 use deser::{Deserialize, Serialize};
+use rustc_hash::FxHashMap;
 
 const BASELINE_SCHEMA: u32 = 1;
 const SYSCALL_SCHEMA: u32 = 1;
@@ -416,7 +416,7 @@ fn format_command_failure(command: &[OsString], output: &std::process::Output) -
 }
 
 fn aggregate_reports(reports: &[BenchmarkReport]) -> Vec<BaselineRecord> {
-    let mut values: BTreeMap<String, Vec<BenchmarkRecord>> = BTreeMap::new();
+    let mut values: FxHashMap<String, Vec<BenchmarkRecord>> = FxHashMap::default();
     for report in reports {
         for record in &report.benchmarks {
             values
@@ -425,7 +425,7 @@ fn aggregate_reports(reports: &[BenchmarkReport]) -> Vec<BaselineRecord> {
                 .push(record.clone());
         }
     }
-    values
+    let mut records: Vec<BaselineRecord> = values
         .into_iter()
         .map(|(name, records)| BaselineRecord {
             name,
@@ -436,7 +436,10 @@ fn aggregate_reports(reports: &[BenchmarkReport]) -> Vec<BaselineRecord> {
             max_alloc_bytes: median(records.iter().map(|record| record.max_alloc_bytes)),
             run_median_ns: Some(records.iter().map(|record| record.median_ns).collect()),
         })
-        .collect()
+        .collect();
+    // Hash iteration order is unspecified; baselines list benchmarks by name.
+    records.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+    records
 }
 
 fn median(values: impl Iterator<Item = u64>) -> u64 {
@@ -492,20 +495,29 @@ fn check_budget(budget: &[BaselineRecord], candidate: &[BaselineRecord]) -> Resu
     let candidate = benchmark_index(candidate, "candidate")?;
     let mut violations = Vec::new();
 
-    for name in budget.keys() {
+    // Hash iteration order is unspecified; report violations by benchmark name.
+    let mut budget_names: Vec<&str> = budget.keys().copied().collect();
+    budget_names.sort_unstable();
+    let mut candidate_names: Vec<&str> = candidate.keys().copied().collect();
+    candidate_names.sort_unstable();
+
+    for &name in &budget_names {
         if !candidate.contains_key(name) {
             violations.push(format!(
                 "required benchmark `{name}` is missing from candidate"
             ));
         }
     }
-    for name in candidate.keys() {
+    for &name in &candidate_names {
         if !budget.contains_key(name) {
             violations.push(format!("candidate benchmark `{name}` is not in budget"));
         }
     }
 
-    for (name, budget_record) in &budget {
+    for &name in &budget_names {
+        let Some(budget_record) = budget.get(name) else {
+            continue;
+        };
         let Some(candidate_record) = candidate.get(name) else {
             continue;
         };
@@ -557,8 +569,8 @@ fn check_budget(budget: &[BaselineRecord], candidate: &[BaselineRecord]) -> Resu
 fn benchmark_index<'a>(
     records: &'a [BaselineRecord],
     file_kind: &str,
-) -> Result<BTreeMap<&'a str, &'a BaselineRecord>, String> {
-    let mut index = BTreeMap::new();
+) -> Result<FxHashMap<&'a str, &'a BaselineRecord>, String> {
+    let mut index = FxHashMap::default();
     for record in records {
         if index.insert(record.name.as_str(), record).is_some() {
             return Err(format!(
@@ -652,19 +664,22 @@ fn render_comparison(
     };
     let name_width = width.saturating_sub(metric_width * 3 + SEPARATORS).max(8);
     let line_width = name_width + metric_width * 3 + SEPARATORS;
-    let previous: BTreeMap<_, _> = previous
+    let previous: FxHashMap<_, _> = previous
         .iter()
         .map(|record| (&record.name, record))
         .collect();
-    let current: BTreeMap<_, _> = current
+    let current: FxHashMap<_, _> = current
         .iter()
         .map(|record| (&record.name, record))
         .collect();
-    let names = previous
+    let mut names = previous
         .keys()
         .chain(current.keys())
         .map(|name| (*name).clone())
-        .collect::<std::collections::BTreeSet<_>>();
+        .collect::<Vec<_>>();
+    // Hash iteration order is unspecified; the comparison lists names sorted.
+    names.sort_unstable();
+    names.dedup();
 
     let mut output = String::new();
     output.push_str(&format!("{title}\n"));
@@ -904,7 +919,7 @@ fn run_syscall_diagnostic(
         }
     })
     .ok_or_else(|| "could not find benchmark executable in cargo JSON".to_owned())?;
-    let names = docker_capture(
+    let mut names = docker_capture(
         root,
         &format!("{} --bench --list", shell_quote(&executable)),
     )?
@@ -914,9 +929,10 @@ fn run_syscall_diagnostic(
             .or_else(|| line.strip_prefix("╰─ "))
     })
     .map(ToOwned::to_owned)
-    .collect::<std::collections::BTreeSet<_>>()
-    .into_iter()
     .collect::<Vec<_>>();
+    // The listing order is not guaranteed; run benchmarks in name order.
+    names.sort_unstable();
+    names.dedup();
     if names.is_empty() {
         return Err("benchmark executable listed no benchmarks".to_owned());
     }
@@ -1017,7 +1033,7 @@ fn shell_quote(value: &str) -> String {
 }
 
 fn parse_syscalls(trace: &str) -> ParsedSyscalls {
-    let mut totals: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+    let mut totals: FxHashMap<String, (u64, u64)> = FxHashMap::default();
     let mut active = false;
     let mut saw_begin = false;
     let mut saw_end = false;
@@ -1056,7 +1072,7 @@ fn parse_syscalls(trace: &str) -> ParsedSyscalls {
     } else {
         "bounded"
     };
-    let syscalls = totals
+    let mut syscalls = totals
         .into_iter()
         .map(|(name, (calls, errors))| SyscallCount {
             name,
@@ -1064,6 +1080,8 @@ fn parse_syscalls(trace: &str) -> ParsedSyscalls {
             errors,
         })
         .collect::<Vec<_>>();
+    // Hash iteration order is unspecified; report syscalls by name.
+    syscalls.sort_unstable_by(|a, b| a.name.cmp(&b.name));
     let calls = syscalls.iter().map(|syscall| syscall.calls).sum();
     let errors = syscalls.iter().map(|syscall| syscall.errors).sum();
     ParsedSyscalls {

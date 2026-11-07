@@ -1,7 +1,8 @@
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 
 ARG TARGETARCH
-ARG LLVM_VERSION=22.1.8
+ARG LLVM_VERSION=23.1.5
+ARG LLVM_RELEASE_SHA=4c2254e
 ARG RUSTUP_VERSION=1.29.1
 
 RUN apk add --no-cache \
@@ -23,8 +24,8 @@ RUN ar rcs /usr/lib/libutil.a
 # musl-linked so clang, lld, and the LLVM tools run inside Alpine. The digests
 # are those published in the release's checksums asset and must be replaced
 # with the matching pair when LLVM_VERSION moves.
-ADD --checksum=sha256:ac0bd443a1933bbd2c0efbedf6ebc97ff8ca2469e5ba65eadb966fb75f65dd1c https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/llvm-musl-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-x86_64-linux-musl.tar.xz /tmp/llvm-x86_64.tar.xz
-ADD --checksum=sha256:675f9cf871313a5672a63882d4d30dd6dd55df0aa9caee70970542eb03a23da3 https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/llvm-musl-${LLVM_VERSION}/clang+llvm-${LLVM_VERSION}-aarch64-linux-musl.tar.xz /tmp/llvm-aarch64.tar.xz
+ADD --checksum=sha256:9f599abd0caf81df64fdf70442ef2c39cb701d346030643193b39a743ad43ce0 https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/llvm-musl-${LLVM_VERSION}-${LLVM_RELEASE_SHA}/clang+llvm-${LLVM_VERSION}-x86_64-linux-musl.tar.xz /tmp/llvm-x86_64.tar.xz
+ADD --checksum=sha256:187e71574399adaedd6077ffb5e4b20900aa29f32c3f131db2f4440273b75444 https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/llvm-musl-${LLVM_VERSION}-${LLVM_RELEASE_SHA}/clang+llvm-${LLVM_VERSION}-aarch64-linux-musl.tar.xz /tmp/llvm-aarch64.tar.xz
 RUN case "$TARGETARCH" in \
         amd64) archive=/tmp/llvm-x86_64.tar.xz ;; \
         arm64) archive=/tmp/llvm-aarch64.tar.xz ;; \

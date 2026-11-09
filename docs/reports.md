@@ -19,9 +19,9 @@ Records may include an optional `process_resources` object. Its `status` and
 `memory_status` are `supported`, `unsupported`, or `not_applicable`. Supported
 Linux records include per-process user and system CPU nanoseconds, voluntary and
 involuntary context switches, minor and major page faults, and optional RSS and
-PSS byte snapshots from bounded `/proc` reads. Other platforms report the
-Linux-only measurements as unsupported. Missing metrics remain unavailable,
-not zero. CPU time, context switches, and page faults are medians of
+PSS byte snapshots from bounded `/proc` reads. macOS reports current RSS from
+`task_info`. PSS and process counters remain unsupported there. Missing metrics
+remain unavailable, not zero. CPU time, context switches, and page faults are medians of
 per-sample deltas. RSS and PSS are medians of the end-of-sample snapshots.
 Older schema-1 reports without `process_resources` remain readable.
 

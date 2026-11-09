@@ -45,7 +45,7 @@ impl MemorySnapshot {
         }
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     fn unsupported() -> Self {
         Self {
             status: ResourceStatus::Unsupported,
@@ -292,7 +292,48 @@ fn capture_memory() -> MemorySnapshot {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
+#[repr(C, packed(4))]
+struct MachTaskBasicInfo {
+    virtual_size: u64,
+    resident_size: u64,
+    resident_size_max: u64,
+    user_time: [i32; 2],
+    system_time: [i32; 2],
+    policy: i32,
+    suspend_count: i32,
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    static mach_task_self_: u32;
+    fn task_info(task: u32, flavor: u32, info: *mut i32, count: *mut u32) -> i32;
+}
+
+#[cfg(target_os = "macos")]
+fn capture_memory() -> MemorySnapshot {
+    let mut info: MachTaskBasicInfo = unsafe { std::mem::zeroed() };
+    let expected_count = (std::mem::size_of::<MachTaskBasicInfo>() / std::mem::size_of::<u32>()) as u32;
+    let mut count = expected_count;
+    let result = unsafe {
+        task_info(mach_task_self_, 20, (&mut info as *mut MachTaskBasicInfo).cast(), &mut count)
+    };
+    if result == 0 && count == expected_count {
+        MemorySnapshot {
+            status: ResourceStatus::Supported,
+            rss_bytes: Some(info.resident_size),
+            pss_bytes: None,
+        }
+    } else {
+        MemorySnapshot {
+            status: ResourceStatus::NotApplicable,
+            rss_bytes: None,
+            pss_bytes: None,
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn capture_memory() -> MemorySnapshot {
     MemorySnapshot::unsupported()
 }
@@ -554,6 +595,28 @@ mod tests {
             snapshot.memory.status,
             ResourceStatus::Supported | ResourceStatus::Unsupported | ResourceStatus::NotApplicable
         ));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_snapshot_reports_current_resident_memory() {
+        let snapshot = ProcessResourceSnapshot::capture();
+        assert_eq!(snapshot.memory.status, ResourceStatus::Supported);
+        assert!(snapshot.memory.rss_bytes.is_some_and(|bytes| bytes > 0));
+        assert_eq!(snapshot.memory.pss_bytes, None);
+        let metrics = summarize(&[ProcessResourceDelta::between(snapshot, snapshot)]);
+        assert_eq!(metrics.memory_status, ResourceStatus::Supported);
+        assert_eq!(metrics.rss_bytes, snapshot.memory.rss_bytes);
+        assert_eq!(metrics.pss_bytes, None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn mach_task_basic_info_layout_matches_darwin() {
+        assert_eq!(std::mem::size_of::<MachTaskBasicInfo>(), 48);
+        assert_eq!(std::mem::align_of::<MachTaskBasicInfo>(), 4);
+        assert_eq!(std::mem::offset_of!(MachTaskBasicInfo, resident_size), 8);
+        assert_eq!(std::mem::offset_of!(MachTaskBasicInfo, suspend_count), 44);
     }
 
     #[cfg(target_os = "linux")]

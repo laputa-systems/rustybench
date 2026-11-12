@@ -1,25 +1,6 @@
 Prefix: RUST
 Next: 35
 
-### RUST-29 · P2 · Zero sampling budgets panic or silently skip test execution
-
-- **Area:** Config
-- **Where:** `src/benchmark/mod.rs:684`, `src/benchmark/mod.rs:711`, `src/benchmark/mod.rs:1377`, `src/rustybench.rs:385`, `src/rustybench.rs:685`, `src/rustybench.rs:734`, `src/cli.rs:264`
-- **Problem:** Sampling sets `did_run` before returning for zero maximum duration
-  or zero sample count. Statistics then divide by an empty sample count.
-  A registered benchmark run with `--bench --max-time 0 --format json` exits 101
-  with division by zero. Public builders using `.sample_count(0)` or
-  `.max_time(Duration::ZERO)` also panic. With `--test` or `.test_benches()`, the
-  same budgets instead exit 0 with zero completed operations, violating the
-  run-once contract. The earlier CLI zero-count rejection does not cover these
-  configuration and action paths.
-- **Recommendation:** Validate resolved options once across CLI, attributes,
-  and builders. Reject zero sampling budgets for timed runs before statistics,
-  handle empty samples explicitly, and make test execution independent of
-  timing/sample budgets. Check both the panic trigger and a counted test body.
-- **Fix with:** `make-invalid-states-unrepresentable`
-- **Effort:** S (hours)
-
 ### RUST-30 · P2 · The syscall diagnostic dispatches its image build as a container command
 
 - **Area:** Operability

@@ -85,6 +85,13 @@ impl Rustybench {
     }
 
     pub(crate) fn run_action(&self, action: Action) {
+        if let Err(error) = self.try_run_action(action) {
+            eprintln!("rustybench: {error}");
+            std::process::exit(2);
+        }
+    }
+
+    fn try_run_action(&self, action: Action) -> Result<(), String> {
         let group_entries = &crate::entry::GROUP_ENTRIES;
 
         let generic_bench_entries = group_entries.iter().flat_map(|group| {
@@ -107,13 +114,13 @@ impl Rustybench {
         EntryTree::retain(&mut tree, |entry_path| self.filter(entry_path));
 
         if tree.is_empty() {
-            return;
+            return Ok(());
         }
 
         // When run under `cargo-nextest`, it provides `--list --format terse`.
         if action.is_list_terse() {
             self.run_tree_list(&tree, None, "");
-            return;
+            return Ok(());
         }
 
         EntryTree::sort_by_attr(&mut tree, self.sorting_attr, self.reverse_sort);
@@ -154,7 +161,7 @@ impl Rustybench {
             &tree_painter,
             &mut report,
             "",
-        );
+        )?;
 
         if self.output_format == OutputFormat::Json && action.is_bench() {
             println!(
@@ -163,6 +170,7 @@ impl Rustybench {
                     .expect("benchmark report serializes")
             );
         }
+        Ok(())
     }
 
     fn run_tree_list(
@@ -235,7 +243,7 @@ impl Rustybench {
         tree_painter: &RefCell<TreePainter>,
         report: &mut Vec<BenchmarkRecord>,
         parent_path: &str,
-    ) {
+    ) -> Result<(), String> {
         for (i, child) in tree.iter().enumerate() {
             let is_last = i == tree.len() - 1;
 
@@ -265,7 +273,7 @@ impl Rustybench {
                     is_last,
                     report,
                     parent_path,
-                ),
+                )?,
                 EntryTree::Parent { children, .. } => {
                     tree_painter.borrow_mut().start_parent(name, is_last);
 
@@ -277,12 +285,13 @@ impl Rustybench {
                         tree_painter,
                         report,
                         &join_path(parent_path, name),
-                    );
+                    )?;
 
                     tree_painter.borrow_mut().finish_parent();
                 }
             }
         }
+        Ok(())
     }
 
     fn run_bench_entry(
@@ -297,7 +306,7 @@ impl Rustybench {
         is_last_entry: bool,
         report: &mut Vec<BenchmarkRecord>,
         parent_path: &str,
-    ) {
+    ) -> Result<(), String> {
         use crate::benchmark::BenchContext;
 
         let report_prefix = join_path(parent_path, entry_display_name);
@@ -315,14 +324,14 @@ impl Rustybench {
             tree_painter
                 .borrow_mut()
                 .ignore_leaf(entry_display_name, is_last_entry);
-            return;
+            return Ok(());
         }
 
         if action.is_list() {
             let mut tree_painter = tree_painter.borrow_mut();
             tree_painter.start_leaf(entry_display_name, is_last_entry);
             tree_painter.finish_empty_leaf();
-            return;
+            return Ok(());
         }
 
         let mut thread_counts: Vec<NonZeroUsize> = options
@@ -350,7 +359,7 @@ impl Rustybench {
         let mut run_bench = |bench_display_name: &str,
                              is_last_bench: bool,
                              report_name: &str,
-                             with_bencher: &dyn Fn(Bencher)| {
+                             with_bencher: &dyn Fn(Bencher)| -> Result<(), String> {
             if has_thread_branches {
                 tree_painter
                     .borrow_mut()
@@ -374,10 +383,14 @@ impl Rustybench {
                         .start_leaf(&format!("t={thread_count}"), is_last_thread_count);
                 }
 
-                let mut bench_context = BenchContext::new(shared_context, options, thread_count);
+                let mut bench_context = BenchContext::new(shared_context, options, thread_count)
+                    .map_err(|error| format!("{report_name}: {error}"))?;
                 with_bencher(Bencher::new(&mut bench_context));
 
                 if !bench_context.did_run {
+                    if action.is_bench() {
+                        return Err(format!("{report_name}: no benchmark function registered"));
+                    }
                     eprintln!(
                         "warning: No benchmark function registered for '{bench_display_name}'"
                     );
@@ -387,7 +400,8 @@ impl Rustybench {
                     bench_context.did_run && shared_context.action.is_bench();
 
                 if should_compute_stats {
-                    let stats = bench_context.compute_stats();
+                    let stats = bench_context.compute_stats()
+                        .map_err(|error| format!("{report_name}: {error}"))?;
                     if self.output_format == OutputFormat::Json {
                         let report_name = if has_thread_branches {
                             format!("{report_name}::t={thread_count}")
@@ -410,6 +424,7 @@ impl Rustybench {
             if has_thread_branches {
                 tree_painter.borrow_mut().finish_parent();
             }
+            Ok(())
         };
 
         match bench_entry.bench_runner() {
@@ -437,10 +452,11 @@ impl Rustybench {
                         &|bencher| {
                             bench_runner.bench(bencher, arg_index);
                         },
-                    );
+                    )?;
                 }
 
                 tree_painter.borrow_mut().finish_parent();
+                Ok(())
             }
         }
     }
@@ -814,6 +830,52 @@ impl Rustybench {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static ZERO_BUDGET_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+    #[crate::bench(crate = crate, ignore, sample_count = 0, sample_size = 0, max_time = 0)]
+    fn zero_budget_body() {
+        ZERO_BUDGET_CALLS.fetch_add(1, Ordering::SeqCst);
+    }
+
+    #[test]
+    #[ignore]
+    fn zero_budget_probe() {
+        let mode = std::env::var("RUSTYBENCH_PROBE_BUDGET").unwrap();
+        let mut runner = Rustybench::default().run_only_ignored();
+        runner.filters.include(Filter::Regex(Regex::new("zero_budget_body$").unwrap()));
+        runner.output_format = OutputFormat::Json;
+        runner = match mode.as_str() {
+            "count" => runner.sample_count(0).sample_size(1).max_time(Duration::from_secs(1)),
+            "size" => runner.sample_count(1).sample_size(0).max_time(Duration::from_secs(1)),
+            "time" => runner.sample_count(1).sample_size(1).max_time(Duration::ZERO),
+            "test" | "attribute" => runner,
+            _ => unreachable!(),
+        };
+        if mode == "test" {
+            runner.test_benches();
+            assert_eq!(ZERO_BUDGET_CALLS.load(Ordering::SeqCst), 1);
+        } else {
+            runner.run_benches();
+        }
+    }
+
+    #[test]
+    fn zero_budgets_fail_timed_runs_and_execute_test_bodies_once() {
+        for (mode, expected) in [("count", "sample count"), ("size", "sample size"), ("time", "maximum time"), ("attribute", "sample count"), ("test", "")] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "rustybench::tests::zero_budget_probe", "--ignored", "--nocapture"])
+                .env("RUSTYBENCH_PROBE_BUDGET", mode).output().unwrap();
+            if mode == "test" {
+                assert!(output.status.success(), "{output:?}");
+            } else {
+                assert_eq!(output.status.code(), Some(2), "{output:?}");
+                assert!(String::from_utf8_lossy(&output.stderr).contains(expected), "{output:?}");
+                assert!(!String::from_utf8_lossy(&output.stdout).contains("\"schema\""));
+            }
+        }
+    }
 
     #[test]
     #[ignore]

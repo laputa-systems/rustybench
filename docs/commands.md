@@ -12,7 +12,11 @@ matching names. `--test` runs selected benchmarks once without timing.
 The default sample count is 100. If `--sample-size` is omitted, Rustybench
 tunes the iterations per sample. With threaded benchmarks, sample count is
 rounded up to a multiple of the thread count. Byte rates use decimal units by
-default.
+default. Timed runs require a nonzero sample count, sample size, and maximum
+time after CLI, environment, builder, and attribute options are resolved.
+Untimed tests run once per thread regardless of those budgets. A timed benchmark
+that registers no operation or collects no samples fails without emitting a
+partial JSON report.
 
 `cargo bench` passes `--bench`, which selects a timed run. Without `--bench`,
 the runner performs one untimed iteration per benchmark, which is what

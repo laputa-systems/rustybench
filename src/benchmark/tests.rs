@@ -36,7 +36,7 @@ fn deferred_resource_probe() {
                 ..BenchOptions::default()
             };
             let shared = SharedContext { action: Action::Bench, thread_pool: ThreadPool::new() };
-            let mut context = BenchContext::new(&shared, &options, NonZeroUsize::new(threads).unwrap());
+            let mut context = BenchContext::new(&shared, &options, NonZeroUsize::new(threads).unwrap()).unwrap();
             let bencher = Bencher::new(&mut context);
             match branch {
                 0 => bencher.bench(|| DropResources),
@@ -78,7 +78,7 @@ fn test_bencher(test: &mut dyn FnMut(Bencher)) {
                 &shared_context,
                 &bench_options,
                 NonZeroUsize::new(thread_count).unwrap(),
-            );
+            ).unwrap();
 
             test(Bencher::new(&mut bench_context));
 
@@ -472,7 +472,7 @@ fn setup_cost_bounds_tuned_sample_size() {
         &shared_context,
         &bench_options,
         NonZeroUsize::new(1).unwrap(),
-    );
+    ).unwrap();
 
     Bencher::new(&mut bench_context)
         .with_inputs(|| vec![0u8; 4 * 1024 * 1024])
@@ -509,7 +509,7 @@ fn worker_panic_releases_peers() {
                 &shared_context,
                 &bench_options,
                 NonZeroUsize::new(2).unwrap(),
-            );
+            ).unwrap();
 
             let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 Bencher::new(&mut bench_context).bench(|| {
@@ -541,7 +541,7 @@ fn alloc_median_follows_allocation_order_not_time_order() {
         &shared_context,
         &bench_options,
         NonZeroUsize::new(1).unwrap(),
-    );
+    ).unwrap();
 
     bench_context.samples.sample_size = 1;
 
@@ -579,7 +579,7 @@ fn alloc_median_follows_allocation_order_not_time_order() {
         );
     }
 
-    let stats = bench_context.compute_stats();
+    let stats = bench_context.compute_stats().unwrap();
     let record = crate::report::BenchmarkRecord::from_stats("synthetic", &stats);
 
     assert_eq!(record.alloc_count, 10);
@@ -607,14 +607,14 @@ fn max_alloc_bytes_stays_the_sample_peak() {
         &shared_context,
         &bench_options,
         NonZeroUsize::new(1).unwrap(),
-    );
+    ).unwrap();
 
     Bencher::new(&mut bench_context).bench(|| {
         let buffer = Vec::<u8>::with_capacity(ALLOC_BYTES);
         black_box_drop(buffer);
     });
 
-    let stats = bench_context.compute_stats();
+    let stats = bench_context.compute_stats().unwrap();
     let record = crate::report::BenchmarkRecord::from_stats("peak", &stats);
     let alloc_bytes = ALLOC_BYTES as u64;
     let divided = alloc_bytes / u64::from(PEAK_SAMPLE_SIZE);
@@ -721,22 +721,21 @@ mod zst_input {
 }
 
 #[test]
-#[should_panic(expected = "sample size must be greater than zero")]
-fn options_with_zero_sample_size_are_rejected() {
-    let bench_options = BenchOptions {
-        sample_count: Some(1),
-        sample_size: Some(0),
-        ..BenchOptions::default()
-    };
-    let shared_context = SharedContext {
-        action: Action::Bench,
-        thread_pool: ThreadPool::new(),
-    };
-    let bench_context = BenchContext::new(
-        &shared_context,
-        &bench_options,
-        NonZeroUsize::new(1).unwrap(),
-    );
+fn zero_sampling_budgets_are_rejected_before_execution() {
+    for options in [
+        BenchOptions { sample_count: Some(0), ..BenchOptions::default() },
+        BenchOptions { sample_size: Some(0), ..BenchOptions::default() },
+        BenchOptions { max_time: Some(std::time::Duration::ZERO), ..BenchOptions::default() },
+    ] {
+        let shared = SharedContext { action: Action::Bench, thread_pool: ThreadPool::new() };
+        assert!(BenchContext::new(&shared, &options, NonZeroUsize::MIN).is_err());
+    }
+}
 
-    let _ = bench_context.initial_mode();
+#[test]
+fn empty_samples_return_an_explicit_error() {
+    let shared = SharedContext { action: Action::Bench, thread_pool: ThreadPool::new() };
+    let options = BenchOptions::default();
+    let context = BenchContext::new(&shared, &options, NonZeroUsize::MIN).unwrap();
+    assert!(context.compute_stats().is_err());
 }

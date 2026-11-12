@@ -54,9 +54,17 @@ impl<'a> BenchOptions<'a> {
         }
     }
 
-    #[inline]
-    pub(crate) fn has_samples(&self) -> bool {
-        self.sample_count != Some(0) && self.sample_size != Some(0)
+    pub(crate) fn validate_sampling(&self) -> Result<(), &'static str> {
+        if self.sample_count == Some(0) {
+            return Err("sample count must be greater than zero");
+        }
+        if self.sample_size == Some(0) {
+            return Err("sample size must be greater than zero");
+        }
+        if self.max_time == Some(Duration::ZERO) {
+            return Err("maximum time must be greater than zero");
+        }
+        Ok(())
     }
 
     #[inline]

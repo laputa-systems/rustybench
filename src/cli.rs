@@ -261,20 +261,6 @@ where
             "--list conflicts with --test".to_owned().into(),
         ));
     }
-    if options.sample_count == Some(0) {
-        return Err(lexopt::Error::Custom(
-            "--sample-count must be greater than zero"
-                .to_owned()
-                .into(),
-        ));
-    }
-    if options.sample_size == Some(0) {
-        return Err(lexopt::Error::Custom(
-            "--sample-size must be greater than zero"
-                .to_owned()
-                .into(),
-        ));
-    }
 
     Ok(options)
 }
@@ -371,21 +357,11 @@ mod tests {
     }
 
     #[test]
-    fn zero_sample_count_is_rejected() {
-        let error = parse(&["--sample-count", "0"], &[])
-            .unwrap_err()
-            .to_string();
-
-        assert!(error.contains("--sample-count"));
-    }
-
-    #[test]
-    fn zero_sample_size_is_rejected() {
-        let error = parse(&["--sample-size", "0"], &[])
-            .unwrap_err()
-            .to_string();
-
-        assert!(error.contains("--sample-size"));
+    fn zero_budgets_are_preserved_for_resolved_action_validation() {
+        let options = parse(&["--test", "--sample-count", "0", "--sample-size", "0", "--max-time", "0"], &[]).unwrap();
+        assert_eq!(options.sample_count, Some(0));
+        assert_eq!(options.sample_size, Some(0));
+        assert_eq!(options.max_time.unwrap().0, std::time::Duration::ZERO);
     }
 
     #[test]

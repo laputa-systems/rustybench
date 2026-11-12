@@ -621,15 +621,18 @@ impl<'a> BenchContext<'a> {
         shared_context: &'a SharedContext,
         options: &'a BenchOptions,
         thread_count: NonZeroUsize,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, &'static str> {
+        if shared_context.action.is_bench() {
+            options.validate_sampling()?;
+        }
+        Ok(Self {
             shared_context,
             options,
             thread_count,
             did_run: false,
             samples: SampleCollection::default(),
             counters: options.counters.to_collection(),
-        }
+        })
     }
 
     /// Runs the single-threaded loop for benchmarking `benched`.
@@ -708,11 +711,6 @@ impl<'a> BenchContext<'a> {
         // The remaining time left for benchmarking, in picoseconds.
         let max_picos = self.options.max_time().picos;
 
-        // Don't bother running if user specifies 0 max time or 0 samples.
-        if max_picos == 0 || !self.options.has_samples() {
-            return;
-        }
-
         let record_sample = Self::sample_recorder(gen_input, benched, drop_input);
 
         let mut rem_samples = if current_mode.is_collect() {
@@ -745,7 +743,7 @@ impl<'a> BenchContext<'a> {
 
         while {
             // Conditions for when sampling is over:
-            if elapsed_picos >= max_picos {
+            if !is_test && elapsed_picos >= max_picos {
                 // Depleted the benchmarking time budget. This is a strict
                 // condition regardless of sample count and minimum time.
                 false
@@ -1286,18 +1284,17 @@ impl<'a> BenchContext<'a> {
         if self.shared_context.action.is_test() {
             BenchMode::Test
         } else if let Some(sample_size) = self.options.sample_size {
-            assert!(
-                sample_size > 0,
-                "sample size must be greater than zero"
-            );
             BenchMode::Collect { sample_size }
         } else {
             BenchMode::Tune { sample_size: 1 }
         }
     }
 
-    pub fn compute_stats(&self) -> Stats {
+    pub fn compute_stats(&self) -> Result<Stats, &'static str> {
         let time_samples = &self.samples.time_samples;
+        if time_samples.is_empty() {
+            return Err("benchmark collected no samples; increase the maximum time");
+        }
         let alloc_info_by_sample = &self.samples.alloc_info_by_sample;
 
         let sample_count = time_samples.len();
@@ -1440,7 +1437,7 @@ impl<'a> BenchContext<'a> {
         }
 
         let sample_size = f64::from(sample_size);
-        Stats {
+        Ok(Stats {
             sample_count: sample_count as u32,
             iter_count: total_count,
             time: StatsSet {
@@ -1519,7 +1516,7 @@ impl<'a> BenchContext<'a> {
             },
             counts,
             process_resources: summarize(&self.samples.process_resources),
-        }
+        })
     }
 }
 

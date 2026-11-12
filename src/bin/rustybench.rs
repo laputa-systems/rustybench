@@ -390,19 +390,41 @@ fn run_benchmark(
         return Err(format_command_failure(&command, &output));
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout
-        .lines()
-        .rev()
-        .find_map(|line| {
-            let report = deser_json::from_str::<BenchmarkReport>(line.trim()).ok()?;
-            (report.schema == BASELINE_SCHEMA).then_some(report)
-        })
-        .ok_or_else(|| {
-            format!(
-                "could not parse benchmark JSON from {:?}\n{}",
-                command, stdout
-            )
-        })
+    parse_benchmark_reports(&stdout)
+}
+
+fn parse_benchmark_reports(stdout: &str) -> Result<BenchmarkReport, String> {
+    #[derive(Deserialize)]
+    struct Header {
+        schema: Option<u32>,
+    }
+
+    let mut benchmarks = Vec::new();
+    let mut names = std::collections::BTreeSet::new();
+    let mut report_count = 0;
+    for line in stdout.lines().map(str::trim).filter(|line| line.starts_with('{')) {
+        let header: Header = deser_json::from_str(line)
+            .map_err(|error| format!("invalid benchmark JSON: {error}"))?;
+        let Some(schema) = header.schema else {
+            continue;
+        };
+        if schema != BASELINE_SCHEMA {
+            return Err(format!("unsupported benchmark schema {schema}"));
+        }
+        let report: BenchmarkReport = deser_json::from_str(line)
+            .map_err(|error| format!("invalid benchmark report: {error}"))?;
+        report_count += 1;
+        for record in report.benchmarks {
+            if !names.insert(record.name.clone()) {
+                return Err(format!("duplicate benchmark identity {:?}", record.name));
+            }
+            benchmarks.push(record);
+        }
+    }
+    if report_count == 0 {
+        return Err(format!("could not parse benchmark JSON\n{stdout}"));
+    }
+    Ok(BenchmarkReport { schema: BASELINE_SCHEMA, benchmarks })
 }
 
 fn format_command_failure(command: &[OsString], output: &std::process::Output) -> String {
@@ -1140,6 +1162,61 @@ mod tests {
             schema: BASELINE_SCHEMA,
             benchmarks: records,
         }
+    }
+
+    fn report_producer(reports: &[BenchmarkReport]) -> Vec<OsString> {
+        let script = reports.iter()
+            .map(|report| format!("printf '%s\\n' {}", shell_quote(&deser_json::to_string(report).unwrap())))
+            .collect::<Vec<_>>()
+            .join("\n");
+        vec!["sh".into(), "-c".into(), script.into(), "producer".into()]
+    }
+
+    fn collect_to(files: &TestBaselineFiles, command: Vec<OsString>, runs: u32) -> Result<(), String> {
+        let mut arguments = vec![
+            "--baseline".into(), files.candidate.as_os_str().to_owned(),
+            "--quiet".into(), "--warmup".into(), "0".into(),
+            "--runs".into(), runs.to_string().into(),
+            "--sample-count".into(), "1".into(), "--sample-size".into(), "1".into(),
+            "--".into(),
+        ];
+        arguments.extend(command);
+        baseline(arguments)
+    }
+
+    #[test]
+    fn collection_preserves_every_target_and_qualified_identity() {
+        let files = temporary_baseline_files(vec![], vec![]);
+        let command = report_producer(&[
+            report(vec![benchmark("suite::colliding::a::Widget", 10)]),
+            report(vec![benchmark("suite::colliding::b::Widget", 20)]),
+        ]);
+        collect_to(&files, command, 2).unwrap();
+        let file: BaselineFile = deser_json::from_str(&fs::read_to_string(&files.candidate).unwrap()).unwrap();
+        assert_eq!(file.measured_runs, 2);
+        assert_eq!(file.benchmarks.len(), 2);
+        assert_eq!(file.benchmarks[0].name, "suite::colliding::a::Widget");
+        assert_eq!(file.benchmarks[0].run_median_ns, Some(vec![10, 10]));
+        assert_eq!(file.benchmarks[1].name, "suite::colliding::b::Widget");
+        assert_eq!(file.benchmarks[1].run_median_ns, Some(vec![20, 20]));
+    }
+
+    #[test]
+    fn collection_rejects_ambiguous_or_invalid_reports_without_replacing_baseline() {
+        let cases = [
+            (vec![report(vec![benchmark("same", 1)]), report(vec![benchmark("same", 2)])], "duplicate benchmark identity"),
+            (vec![report(vec![benchmark("same", 1), benchmark("same", 2)])], "duplicate benchmark identity"),
+            (vec![BenchmarkReport { schema: 99, benchmarks: vec![] }, report(vec![benchmark("valid", 1)])], "unsupported benchmark schema"),
+        ];
+        for (reports, expected) in cases {
+            let files = temporary_baseline_files(vec![], vec![budget_record()]);
+            let previous = fs::read(&files.candidate).unwrap();
+            let error = collect_to(&files, report_producer(&reports), 1).unwrap_err();
+            assert!(error.contains(expected), "{error}");
+            assert_eq!(fs::read(&files.candidate).unwrap(), previous);
+        }
+        let error = parse_benchmark_reports("{\"schema\":1,\"benchmarks\":[{\"name\":\"invalid\"}]}\n").unwrap_err();
+        assert!(error.contains("invalid benchmark report"), "{error}");
     }
 
     fn baseline_file(records: Vec<BaselineRecord>) -> BaselineFile {

@@ -56,11 +56,13 @@ one iteration per sample.
 file as a set of absolute metric ceilings and requires both files to contain
 exactly the same benchmark names.
 
-Collection currently assumes Cargo-style argument forwarding. Use one Cargo
-benchmark target per command: only the final JSON report is retained when a
-command emits several. Keep the benchmark inventory constant across measured
-runs; collection does not reject missing observations or duplicate names before
-aggregation. These defects are tracked in [TODO.md](../TODO.md).
+Collection combines every schema-1 report emitted by a command, including
+reports from multiple benchmark targets. Duplicate benchmark names and invalid
+reports fail collection before replacing the baseline.
+
+Collection currently assumes Cargo-style argument forwarding. Keep the benchmark
+inventory constant across measured runs; collection does not yet reject missing
+observations. These defects are tracked in [TODO.md](../TODO.md).
 
 Set `RUSTYBENCH_BENCH_RUSTFLAGS` to replace the child benchmark command's
 `RUSTFLAGS`. Inherited `RUSTFLAGS` are not kept. This does not change flags

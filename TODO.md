@@ -1,25 +1,6 @@
 Prefix: RUST
 Next: 35
 
-### RUST-26 · P1 · Baseline collection discards earlier benchmark targets
-
-- **Area:** Data
-- **Where:** `src/bin/rustybench.rs:392`, `src/bin/rustybench.rs:257`, `src/bin/rustybench.rs:288`
-- **Problem:** `run_benchmark` scans stdout backward and accepts only the last
-  schema-1 report. A command running several benchmark targets produces one
-  report per executable, so collection silently omits earlier targets and can
-  replace an existing baseline with that subset. A producer running the real
-  benchmark executable for `bench::workloads::parse_document::256` and then
-  `bench::workloads::sort_records::256`, each with one sample/iteration and JSON
-  output, emits two reports. `baseline --fast --quiet -- PRODUCER` exits 0 and
-  retains only `sort_records::256`.
-- **Recommendation:** Parse and validate every report in an invocation, combine
-  their records, and reject duplicate identities before aggregation. If multiple
-  reports are unsupported, reject them explicitly without replacing the prior
-  baseline. Keep a two-target collection case at the process boundary.
-- **Fix with:** `durable-state`
-- **Effort:** S (hours)
-
 ### RUST-27 · P2 · Incomplete measured runs are accepted as complete baselines
 
 - **Area:** Data

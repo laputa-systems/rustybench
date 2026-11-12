@@ -1,8 +1,7 @@
 # Commands and configuration
 
-The benchmark executable accepts positional regular-expression filters and
-options after Cargo's `--` separator. Run `cargo bench --bench example -- --help`
-to print the current help.
+Pass benchmark executable options after Cargo's `--` separator. The examples
+below assume the repository's pinned toolchain is selected.
 
 ## Benchmark runner
 
@@ -21,15 +20,18 @@ the runner performs one untimed iteration per benchmark, which is what
 run. `--nocapture` and `--show-output` are accepted and ignored. `--test` and
 `--bench` can also be passed explicitly after Cargo's separator.
 
-Set the matching `RUSTYBENCH_*` environment variable to configure a runner
-option. [src/cli.rs](../src/cli.rs) lists the supported names and value types.
+Sampling, sorting, and counter settings have `RUSTYBENCH_*` variables.
+[src/cli.rs](../src/cli.rs) defines their names and value types. Action, format,
+and filter flags have no environment equivalents. CLI values override the
+environment.
 
 ## Baseline tools
 
 The `rustybench` binary provides baseline collection, comparison, budget checks,
-and a Linux syscall diagnostic. Use `cargo +nightly install rustybench` to
-install it, or run it from this repository with
-`cargo run --bin rustybench --`. Its help lists all options.
+and a Linux syscall diagnostic. Install the tool as described in
+[README.md](../README.md), or run `cargo run --bin rustybench --` in this
+repository. `rustybench --help` lists all options; subcommand `--help` is not
+implemented.
 
 Collect and compare a baseline:
 
@@ -54,13 +56,20 @@ one iteration per sample.
 file as a set of absolute metric ceilings and requires both files to contain
 exactly the same benchmark names.
 
+Collection currently assumes Cargo-style argument forwarding. Use one Cargo
+benchmark target per command: only the final JSON report is retained when a
+command emits several. Keep the benchmark inventory constant across measured
+runs; collection does not reject missing observations or duplicate names before
+aggregation. These defects are tracked in [TODO.md](../TODO.md).
+
 Set `RUSTYBENCH_BENCH_RUSTFLAGS` to replace the child benchmark command's
 `RUSTFLAGS`. Inherited `RUSTFLAGS` are not kept. This does not change flags
 for the `rustybench` tool itself.
 
 ## Syscall diagnostic
 
-`rustybench syscalls` runs a Linux-only Docker and `strace` diagnostic. It needs
-Docker and permission to use `SYS_PTRACE`. It defaults to 10 samples of 100
-iterations and emits a human table or diagnostic JSON. It does not report
-benchmark timing.
+`rustybench syscalls` exposes a Linux-only Docker and `strace` diagnostic with
+defaults of 10 samples and 100 iterations. It requires Docker and `SYS_PTRACE`.
+The current command fails at image-build dispatch; its benchmark-name selection
+also needs repair. See [TODO.md](../TODO.md). Its output contract is a human
+table or diagnostic JSON, separate from benchmark timing.

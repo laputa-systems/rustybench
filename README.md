@@ -4,9 +4,9 @@ Rustybench is a benchmark runner for Rust on macOS and Linux. It measures
 functions registered with `#[rustybench::bench]`, reports time and allocation
 statistics, and can collect JSON baselines for later comparison.
 
-Rustybench requires nightly Rust 1.100 or newer. This repository pins
-`nightly-2026-09-15` in `rust-toolchain.toml`. Use `cargo +nightly` for
-commands that build or run your benchmarks.
+Version 0.5 uses nightly allocator APIs and is tested with
+`nightly-2026-09-15` (Rust 1.100 nightly). Install that toolchain with
+`rustup toolchain install nightly-2026-09-15`.
 
 ## Add a benchmark
 
@@ -15,7 +15,7 @@ harness for each target:
 
 ```toml
 [dev-dependencies]
-rustybench = "0.4"
+rustybench = "0.5"
 
 [[bench]]
 name = "example"
@@ -41,9 +41,9 @@ Run the benchmark, list its registered names, or select names with a regular
 expression:
 
 ```sh
-cargo +nightly bench --bench example
-cargo +nightly bench --bench example -- --list
-cargo +nightly bench --bench example -- add
+cargo +nightly-2026-09-15 bench --bench example
+cargo +nightly-2026-09-15 bench --bench example -- --list
+cargo +nightly-2026-09-15 bench --bench example -- add
 ```
 
 Pass Rustybench options after Cargo's `--`. For example, add `-- --help` to
@@ -82,40 +82,18 @@ Use `#[rustybench::bench_group]` on a module to apply options to its benchmarks.
 Group options cascade to nested groups and benchmarks. A benchmark's default
 name is its module path and function name. Set `name` to change the leaf name.
 
-Use `args` to run a function with several runtime values. Use `types` and
-`consts` to run generic benchmarks with several types or const parameters:
-
-```rust
-const SIZES: &[usize] = &[8, 64, 1024];
-
-#[rustybench::bench(args = SIZES)]
-fn process(size: usize) {
-    let values = vec![0; size];
-    rustybench::black_box(values);
-}
-```
-
-See the [`bench` attribute reference](https://docs.rs/rustybench/0.4.0/rustybench/attr.bench.html)
-for all benchmark and group options, including thread counts and sample limits.
+Use `args` for runtime variants, and `types` or `consts` for generic variants.
+See the [benchmarking guide](docs/benchmarking.md) and
+[`bench` attribute reference](https://docs.rs/rustybench/0.5.0/rustybench/attr.bench.html)
+for examples, thread counts, and sample limits.
 
 ## Count work and allocations
 
 Counters report work per iteration, such as bytes, characters, cycles, or
 items. Set a fixed counter on the attribute or `Bencher`. Use `input_counter`
-when the count depends on generated input. Rustybench uses counters to report
-throughput:
-
-```rust
-use rustybench::{Bencher, counter::ItemsCount};
-
-#[rustybench::bench]
-fn sort(bencher: Bencher) {
-    bencher
-        .with_inputs(|| vec![3, 1, 2])
-        .input_counter(|values| ItemsCount::new(values.len()))
-        .bench_values(|mut values| values.sort_unstable());
-}
-```
+when the count depends on generated input. For example,
+`.input_counter(|values| rustybench::counter::ItemsCount::new(values.len()))` counts items in an
+input collection. Rustybench uses counters to report throughput.
 
 To profile allocations made by the benchmark executable, install
 `AllocProfiler` as its global allocator:
@@ -133,49 +111,43 @@ Rustybench's control are not counted.
 
 ## Run and tune benchmarks
 
-Run `cargo +nightly bench --bench example -- --help` for the runner options.
-Each option has a matching `RUSTYBENCH_*` variable. The names and value types
-are in [`src/cli.rs`](src/cli.rs). Command-line values override environment
-values.
+Run `cargo +nightly-2026-09-15 bench --bench example -- --help` for runner options.
+Sampling, sorting, and counter settings have `RUSTYBENCH_*` variables, defined
+in [`src/cli.rs`](src/cli.rs). Command-line values override them. Action, format,
+and filter flags have no environment equivalents.
 
 Positional filters select benchmark names with regular expressions. Pass
 `--exact` for exact name matches, or use `--skip FILTER` to exclude matching
 names. `--ignored` runs only ignored benchmarks. `--include-ignored` runs
 ignored and regular benchmarks.
 
-Rustybench takes each sample with a monotonic clock and a start and end fence.
-The default clock is `std::time::Instant`. Rustybench calibrates loop and
+Rustybench uses `std::time::Instant` with start and end fences. It calibrates loop and
 allocation tally overhead and subtracts that overhead from sample results.
 Very short operations can still be affected by timer precision and measurement
 overhead. Increase `sample_size` when a sample does too little work.
 
-Input generation with `with_inputs` happens outside the timed operation.
-Returned values are retained until sample cleanup, so their destruction is not
-included in operation timing. Use `skip_ext_time` to exclude time outside the
-benchmark closure when Rustybench applies minimum and maximum time limits.
+Use `skip_ext_time` to exclude external work when applying duration limits.
+See [timing](docs/timing.md) for sampling and calibration details.
 
 ## Read reports and compare baselines
 
 Select JSON output with:
 
 ```sh
-cargo +nightly bench --bench example -- --format json
+cargo +nightly-2026-09-15 bench --bench example -- --format json
 ```
 
-The benchmark report uses schema 1. Its `benchmarks` array contains each
-benchmark's name, median time in nanoseconds, allocation counts and bytes,
-maximum live allocation counts and bytes, sample count, and iteration count.
-Reports may also include process resource measurements. Linux can report CPU
-time, context switches, page faults, and memory snapshots. Unsupported or
-unavailable measurements stay marked as unavailable rather than zero. Older
-schema-1 reports without resource fields remain readable.
+The schema-1 report contains timing and allocation summaries, with optional
+process-resource measurements. [Reports and baselines](docs/reports.md)
+defines the metrics, platform support, and current measurement limitations.
+Read the allocation-peak definition before using those values as budgets.
 
 Install the `rustybench` command-line tool for baseline collection, comparison,
-and budget checks:
+and budget checks. Collect one benchmark target per command:
 
 ```sh
-cargo +nightly install rustybench
-rustybench baseline --root . -- cargo +nightly bench --bench example
+cargo +nightly-2026-09-15 install rustybench --version 0.5.0 --locked
+rustybench baseline --root . -- cargo +nightly-2026-09-15 bench --bench example
 rustybench diff BASELINE CANDIDATE
 rustybench check BUDGET CANDIDATE
 ```
@@ -183,16 +155,15 @@ rustybench check BUDGET CANDIDATE
 `baseline` runs one warmup and three measured runs by default. It reads JSON
 benchmark output and writes a schema-1 baseline JSON file. `diff` compares two
 baseline files. `check` treats the first file as metric ceilings and requires
-both files to contain the same benchmark names. Use `rustybench --help` and
-`rustybench baseline --help` for options.
+both files to contain the same benchmark names. Use `rustybench --help` for
+options and the [command reference](docs/commands.md) for collection limitations.
 
-On Linux, `rustybench syscalls` runs a Docker and `strace` diagnostic. It needs
-Docker and permission to use `SYS_PTRACE`. It reports syscall information, not
-benchmark timing.
+The Linux Docker/`strace` diagnostic, `rustybench syscalls`, currently fails at
+image-build dispatch. Its repairs are tracked in [TODO.md](TODO.md).
 
 ## More documentation
 
-- [Rust API reference](https://docs.rs/rustybench/0.4.0)
+- [Rust API reference](https://docs.rs/rustybench/0.5.0)
 - [Benchmarking guide](https://github.com/laputa-systems/rustybench/blob/main/docs/benchmarking.md)
 - [Command reference](https://github.com/laputa-systems/rustybench/blob/main/docs/commands.md)
 - [JSON reports and baselines](https://github.com/laputa-systems/rustybench/blob/main/docs/reports.md)

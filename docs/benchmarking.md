@@ -27,8 +27,8 @@ benchmark whose operation explicitly drops its value when destruction is the
 work being measured.
 
 `bench` runs work across the configured threads; `bench_local` runs on the
-current thread. The `bench_values`, `bench_refs`, and `bench_loop_local`
-families cover owned inputs, borrowed inputs, and repeated local loop work.
+current thread. Use `bench_values` or `bench_refs` for generated inputs, and
+`bench_local_values` or `bench_local_refs` for their current-thread variants.
 See the [`Bencher` API](../src/benchmark/mod.rs) for the full method reference.
 Use `black_box` on benchmark inputs; returned values are black-boxed by the
 runner, and `black_box_drop` makes intentional discards explicit.
@@ -44,7 +44,7 @@ const SIZES: &[usize] = &[8, 64, 1024];
 
 #[rustybench::bench(args = SIZES)]
 fn process(size: usize) {
-    // Use `size` as the input size.
+    rustybench::black_box(vec![0u8; size]);
 }
 ```
 

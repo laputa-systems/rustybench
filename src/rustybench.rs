@@ -257,6 +257,7 @@ impl Rustybench {
                 EntryTree::Leaf { entry, args, .. } => self.run_bench_entry(
                     action,
                     *entry,
+                    name,
                     args.as_deref(),
                     shared_context,
                     options,
@@ -288,6 +289,7 @@ impl Rustybench {
         &self,
         action: Action,
         bench_entry: AnyBenchEntry,
+        entry_display_name: &str,
         bench_arg_names: Option<&[&&str]>,
         shared_context: &SharedContext,
         entry_options: Option<&BenchOptions>,
@@ -298,7 +300,6 @@ impl Rustybench {
     ) {
         use crate::benchmark::BenchContext;
 
-        let entry_display_name = bench_entry.display_name();
         let report_prefix = join_path(parent_path, entry_display_name);
 
         let options: BenchOptions;
@@ -807,5 +808,60 @@ impl Rustybench {
     #[inline]
     pub fn cycles_count<C: Into<CyclesCount>>(self, count: C) -> Self {
         self.counter(count.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn collision_output_probe() {
+        let mut runner = Rustybench::default()
+            .run_only_ignored()
+            .sample_count(1)
+            .sample_size(1);
+        runner.filters.include(Filter::Regex(Regex::new("colliding_types").unwrap()));
+        match std::env::var("RUSTYBENCH_PROBE_FORMAT").unwrap().as_str() {
+            "terse" => runner.run_action(Action::ListTerse),
+            "human" => runner.run_benches(),
+            "json" => {
+                runner.output_format = OutputFormat::Json;
+                runner.run_benches();
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn resolved_type_identities_survive_runner_output() {
+        let output = |format| {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "rustybench::tests::collision_output_probe", "--ignored", "--nocapture"])
+                .env("RUSTYBENCH_PROBE_FORMAT", format)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            String::from_utf8(output.stdout).unwrap()
+        };
+        let listed: Vec<String> = output("terse")
+            .lines()
+            .filter_map(|line| line.strip_suffix(": benchmark").map(str::to_owned))
+            .collect();
+        assert_eq!(listed.len(), 2);
+        assert_ne!(listed[0], listed[1]);
+        let json = output("json");
+        let report: BenchmarkReport = json.lines()
+            .find_map(|line| deser_json::from_str(line).ok())
+            .unwrap();
+        let mut names: Vec<_> = report.benchmarks.iter().map(|record| record.name.clone()).collect();
+        let mut listed = listed;
+        names.sort();
+        listed.sort();
+        assert_eq!(names, listed);
+        let human = output("human");
+        assert!(human.contains("collision_a::Widget"), "{human}");
+        assert!(human.contains("collision_b::Widget"), "{human}");
     }
 }

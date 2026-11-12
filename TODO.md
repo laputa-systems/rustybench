@@ -1,26 +1,6 @@
 Prefix: RUST
 Next: 35
 
-### RUST-25 · P1 · Generic benchmark identities collapse in reports and baselines
-
-- **Area:** Data
-- **Where:** `src/rustybench.rs:242`, `src/rustybench.rs:262`, `src/rustybench.rs:301`, `src/entry/tree.rs:366`, `src/bin/rustybench.rs:418`, `src/macro_tests.rs:183`
-- **Problem:** The entry tree disambiguates colliding type names, but execution
-  recomputes the short leaf name from `AnyBenchEntry`. A real
-  `#[rustybench::bench(types = [a::Widget, b::Widget])] fn colliding<T>()`
-  fixture with distinct `Widget` types lists two qualified identities under
-  `--list --format terse`, then emits two JSON records named
-  `collision::colliding::Widget`. `baseline --fast` succeeds with one baseline
-  record, `measured_runs = 1`, and two `run_median_ns` values. Different
-  implementations are silently combined into one result. The existing test
-  checks tree paths and misses the public output boundary.
-- **Recommendation:** Carry the resolved leaf name from the tree into execution,
-  human output, and JSON. Verify that colliding short type names remain distinct
-  through runner output and baseline collection. Reject duplicate identities at
-  collection as covered by RUST-27.
-- **Fix with:** `single-source-of-truth`
-- **Effort:** S (hours)
-
 ### RUST-26 · P1 · Baseline collection discards earlier benchmark targets
 
 - **Area:** Data

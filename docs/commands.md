@@ -69,8 +69,13 @@ with nonzero samples and iterations for each entry. Missing or added entries
 fail collection without replacing the baseline. Child diagnostics are relayed
 to stderr.
 
-Collection currently assumes Cargo-style argument forwarding; direct benchmark
-executables are tracked in [TODO.md](../TODO.md).
+Commands beginning with `cargo` use Cargo's `--` separator for runner flags.
+For a prebuilt benchmark executable or another producer command, runner flags
+are appended directly:
+
+```sh
+rustybench baseline --fast -- ./target/release/deps/example-binary
+```
 
 Set `RUSTYBENCH_BENCH_RUSTFLAGS` to replace the child benchmark command's
 `RUSTFLAGS`. Inherited `RUSTFLAGS` are not kept. This does not change flags

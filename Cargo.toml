@@ -29,5 +29,10 @@ name = "bench"
 path = "benches/bench.rs"
 harness = false
 
+[[test]]
+name = "collector"
+path = "tests/collector.rs"
+harness = false
+
 [workspace]
 members = ["macros"]

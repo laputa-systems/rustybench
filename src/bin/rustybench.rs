@@ -357,11 +357,15 @@ fn run_benchmark(
     sample_size: Option<u32>,
 ) -> Result<BenchmarkReport, String> {
     let mut command = command.to_vec();
-    let separator = command.iter().position(|value| value == "--");
-    let insert_at = if let Some(index) = separator {
-        index + 1
+    let is_cargo = Path::new(&command[0]).file_stem() == Some(OsStr::new("cargo"));
+    let insert_at = if is_cargo {
+        if let Some(index) = command.iter().position(|value| value == "--") {
+            index + 1
+        } else {
+            command.push(OsString::from("--"));
+            command.len()
+        }
     } else {
-        command.push(OsString::from("--"));
         command.len()
     };
     command.insert(insert_at, OsString::from("--bench"));
@@ -1219,6 +1223,27 @@ mod tests {
         assert_eq!(file.benchmarks[0].run_median_ns, Some(vec![10, 10]));
         assert_eq!(file.benchmarks[1].name, "suite::colliding::b::Widget");
         assert_eq!(file.benchmarks[1].run_median_ns, Some(vec![20, 20]));
+    }
+
+    #[test]
+    fn collection_forwards_runner_flags_for_cargo_and_direct_executables() {
+        use std::os::unix::fs::PermissionsExt;
+        let files = temporary_baseline_files(vec![], vec![]);
+        for (program, arguments, expected) in [
+            ("cargo", vec!["bench", "--bench", "bench"], "bench --bench bench -- --bench --format json --sample-count 2 --sample-size 3"),
+            ("cargo", vec!["bench", "--", "needle"], "bench -- --bench --format json --sample-count 2 --sample-size 3 needle"),
+            ("harness", vec!["needle"], "needle --bench --format json --sample-count 2 --sample-size 3"),
+        ] {
+            let executable = files.directory.join(program);
+            let json = deser_json::to_string(&report(vec![benchmark("fixture", 1)])).unwrap();
+            let script = format!("#!/bin/sh\n[ \"$*\" = {} ] || exit 1\nprintf '%s\\n' {}\n", shell_quote(expected), shell_quote(&json));
+            fs::write(&executable, script).unwrap();
+            fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+            let command: Vec<OsString> = std::iter::once(executable.into_os_string())
+                .chain(arguments.into_iter().map(OsString::from)).collect();
+            let report = run_benchmark(&files.directory, &command, Some(2), Some(3)).unwrap();
+            assert_eq!(report.benchmarks[0].name, "fixture");
+        }
     }
 
     #[test]

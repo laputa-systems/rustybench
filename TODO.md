@@ -38,25 +38,6 @@ Next: 35
 - **Fix with:** `single-source-of-truth`
 - **Effort:** S (hours)
 
-### RUST-32 · P2 · Baseline argument forwarding breaks direct benchmark executables
-
-- **Area:** Errors
-- **Where:** `src/bin/rustybench.rs:167`, `src/bin/rustybench.rs:353`
-- **Problem:** Help accepts `baseline [OPTIONS] -- COMMAND [ARGS...]`, but the
-  collector always inserts Cargo's `--` separator. A working prebuilt benchmark
-  executable receives `-- --bench --format json ...`, interprets the injected
-  flags as filters, and emits no report. Running the same real executable
-  directly with `--bench --format json` succeeds; passing it to
-  `rustybench baseline --fast --quiet -- EXECUTABLE` exits 2 with
-  `could not parse benchmark JSON`. This prevents collection from prebuilt
-  executables when Cargo/build overhead should be outside the experiment.
-- **Recommendation:** Separate Cargo argument forwarding from direct executable
-  forwarding. Preserve the existing Cargo forms and append runner flags directly
-  for a harness executable. Verify observable argv and successful collection
-  through both command interfaces.
-- **Fix with:** `isolate-effects`
-- **Effort:** S (hours)
-
 ### RUST-33 · P2 · Callable generic bounds are parsed as benchmark parameters
 
 - **Area:** Architecture

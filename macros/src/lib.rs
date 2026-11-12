@@ -162,25 +162,47 @@ fn generate_bench(function: &FunctionInfo, options: &AttrOptions) -> TokenStream
     };
 
     let make_generic_entry = |ty: Option<&TokenStream>, const_value: Option<String>| {
-        let generic_const = const_value.as_ref().map(|value| format!("{{{value}}}"));
+        let scoped_args = options.args_expr.is_some();
+        let source_names = format!("{:?} {:?} {} {} {} {} {} {}",
+            function.type_name, function.const_name, function.name,
+            ty.map(tokens::display).unwrap_or_default(),
+            const_value.as_deref().unwrap_or_default(),
+            function.const_type.as_ref().map(tokens::display).unwrap_or_default(),
+            function.last_arg_type.as_ref().map(tokens::display).unwrap_or_default(),
+            options.args_expr.as_ref().map(|args| tokens::display(&args.raw)).unwrap_or_default());
+        let mut concrete_type_name = "__RustybenchSelectedType".to_owned();
+        while source_names.contains(&concrete_type_name) {
+            concrete_type_name.push('_');
+        }
+        let mut concrete_const_name = "__RUSTYBENCH_SELECTED_CONST".to_owned();
+        while source_names.contains(&concrete_const_name) {
+            concrete_const_name.push('_');
+        }
+        let generic_const = const_value.as_ref().map(|value| {
+            if scoped_args { format!("{{{concrete_const_name}}}") } else { format!("{{{value}}}") }
+        });
         let mut generics = Vec::new();
         if let Some(value) = generic_const {
             generics.push(value);
         }
         if let Some(ty) = ty {
-            generics.push(tokens::display(ty));
+            generics.push(if scoped_args { concrete_type_name.clone() } else { tokens::display(ty) });
         }
         if function.type_before_const {
             generics.reverse();
         }
 
         let bench_fn = make_bench_fn(&generics);
-        let bench_fn = if options.args_expr.is_some() {
-            let type_alias = ty.map(|ty| format!("type {} = {};", function.type_name.as_ref().unwrap(), tokens::display(ty)))
+        let bench_fn = if scoped_args {
+            let concrete_type = ty.map(|ty| format!("type {concrete_type_name} = {};", tokens::display(ty)))
                 .unwrap_or_default();
-            let const_alias = const_value.as_ref().map(|value| format!("const {}: {} = {value};", function.const_name.as_ref().unwrap(), tokens::display(function.const_type.as_ref().unwrap())))
+            let concrete_const = const_value.as_ref().map(|value| format!("const {concrete_const_name}: {} = {value};", tokens::display(function.const_type.as_ref().unwrap())))
                 .unwrap_or_default();
-            format!("{{ {type_alias} {const_alias} {bench_args_global} {bench_fn} }}")
+            let type_alias = ty.map(|_| format!("type {} = {concrete_type_name};", function.type_name.as_ref().unwrap()))
+                .unwrap_or_default();
+            let const_alias = const_value.as_ref().map(|_| format!("const {}: {} = {concrete_const_name};", function.const_name.as_ref().unwrap(), tokens::display(function.const_type.as_ref().unwrap())))
+                .unwrap_or_default();
+            format!("{{ {concrete_type} {concrete_const} {{ {type_alias} {const_alias} {bench_args_global} {bench_fn} }} }}")
         } else {
             bench_fn
         };

@@ -125,6 +125,36 @@ fn callable_generic_bounds_register_and_execute() {
 
 static GENERIC_ARG_CALLS: AtomicUsize = AtomicUsize::new(0);
 
+struct T;
+struct __RustybenchSelectedType;
+const __RUSTYBENCH_SELECTED_CONST: usize = 2;
+
+#[crate::bench(crate = crate, ignore, types = [[u8; __RUSTYBENCH_SELECTED_CONST]], consts = [1usize], args = [0u8])]
+fn generic_arg_shadow_const<T, const N: usize>(value: u8) {
+    GENERIC_ARG_CALLS.fetch_add(1, SeqCst);
+    assert_eq!(std::mem::size_of::<T>(), 2);
+    crate::black_box((value, N));
+}
+
+#[crate::bench(crate = crate, ignore, types = [u8], args = [std::mem::size_of::<__RustybenchSelectedType>()])]
+fn generic_arg_shadow_expression<T>(value: usize) {
+    GENERIC_ARG_CALLS.fetch_add(1, SeqCst);
+    assert_eq!(value, 0);
+    crate::black_box(std::mem::size_of::<T>());
+}
+
+#[crate::bench(crate = crate, ignore, types = [T], args = [0u8])]
+fn generic_arg_shadow_type<T>(value: u8) {
+    GENERIC_ARG_CALLS.fetch_add(1, SeqCst);
+    crate::black_box(value);
+}
+
+#[crate::bench(crate = crate, ignore, types = [Vec<u8>], args = [0u8])]
+fn generic_arg_shadow_vec<Vec>(value: u8) {
+    GENERIC_ARG_CALLS.fetch_add(1, SeqCst);
+    crate::black_box(value);
+}
+
 #[crate::bench(crate = crate, ignore, types = [u8, u16], args = [T::default()])]
 fn generic_arg_value<T: Default + Copy + Send + Sync>(value: T) -> T {
     GENERIC_ARG_CALLS.fetch_add(1, SeqCst);
@@ -168,7 +198,7 @@ fn generic_argument_types_execute_with_separate_storage_and_existing_coercions()
     }
     GENERIC_ARG_CALLS.store(0, SeqCst);
     runner.test_benches();
-    assert_eq!(GENERIC_ARG_CALLS.load(SeqCst), 11);
+    assert_eq!(GENERIC_ARG_CALLS.load(SeqCst), 15);
 }
 
 mod collision_a {

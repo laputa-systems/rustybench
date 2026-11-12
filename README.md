@@ -4,8 +4,9 @@ Rustybench is a benchmark runner for Rust on macOS and Linux. It measures
 functions registered with `#[rustybench::bench]`, reports time and allocation
 statistics, and can collect JSON baselines for later comparison.
 
-Version 0.5 uses nightly allocator APIs and is tested with
-`nightly-2026-09-15` (Rust 1.100 nightly). Install that toolchain with
+Version 0.5 requires nightly Rust and is tested with `nightly-2026-09-15`
+(Rust 1.100 nightly) and Rust 1.101 nightly (`16d1ffac1`, 2026-10-26).
+The repository remains pinned to `nightly-2026-09-15`. Install it with
 `rustup toolchain install nightly-2026-09-15`.
 
 ## Add a benchmark

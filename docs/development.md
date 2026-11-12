@@ -3,6 +3,12 @@
 The repository pins `nightly-2026-09-15` in [`rust-toolchain.toml`](../rust-toolchain.toml).
 CI runs Clippy and tests on Linux and macOS.
 
+The allocator feature gate remains enabled for Rust 1.100, including the pinned
+nightly. Rust 1.101 uses the stabilized allocator API. The compatibility gate
+can be removed when the pin moves to Rust 1.101 or later. To check both paths,
+run workspace checks and tests on the pin and Rust 1.101 nightly with
+`RUSTFLAGS=-Dstable_features` and `RUSTDOCFLAGS=-Dstable_features`.
+
 ## Maintainer targets
 
 The [`Makefile`](../Makefile) defines these local workflows:

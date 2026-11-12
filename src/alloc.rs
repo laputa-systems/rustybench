@@ -86,12 +86,17 @@ impl Drop for SuppressAllocTallying {
 /// `AllocProfiler` also implements [`Allocator`] when its wrapped allocator does,
 /// so it can profile allocations local to a collection:
 ///
+/// The pinned nightly requires `#![feature(allocator_api)]` for this example.
+/// Rust 1.101 nightly uses the stabilized allocator API without that feature.
+///
 /// ```
-/// #![feature(allocator_api)]
+/// # #![feature(cfg_version)]
+/// # #![cfg_attr(not(version("1.101")), feature(allocator_api))]
 /// use rustybench::AllocProfiler;
 ///
 /// let mut values = Vec::new_in(AllocProfiler::system());
 /// values.push(42);
+/// assert_eq!(values, [42]);
 /// ```
 ///
 /// # Implementation

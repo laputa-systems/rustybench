@@ -29,10 +29,9 @@ PSS byte snapshots from bounded `/proc` reads. macOS reports current RSS from
 `task_info`. PSS and process counters remain unsupported there. Missing metrics
 remain unavailable, not zero. CPU time, context switches, and page faults are
 medians of process-wide sample deltas. RSS and PSS are medians of the ending
-snapshots. The ending resource snapshot currently follows deferred cleanup, so
-these metrics include destruction excluded from operation timing and memory
-is sampled after that cleanup. This boundary defect is tracked in
-[TODO.md](../TODO.md).
+snapshots. Both resource snapshots bracket the shared operation boundary.
+All workers wait for the ending snapshot before deferred input and output
+destruction, so that cleanup is excluded from process-resource measurements.
 Older schema-1 reports without `process_resources` remain readable.
 
 ## Baseline JSON

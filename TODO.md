@@ -1,25 +1,6 @@
 Prefix: RUST
 Next: 35
 
-### RUST-28 · P2 · Process-resource samples include deferred destruction
-
-- **Area:** Data
-- **Where:** `src/benchmark/mod.rs:1048`, `src/benchmark/mod.rs:1201`, `src/benchmark/mod.rs:1210`, `src/benchmark/mod.rs:1279`, `src/resource.rs:146`
-- **Problem:** Timing and allocation tallies stop before deferred input/output
-  destruction, but the ending process-resource snapshot follows that cleanup.
-  A one-iteration probe returned a one-byte value whose destructor alone touched
-  32 MiB. The destructor incurred 8,192 minor faults; the benchmark reported
-  8,195 faults although the timed operation only constructed the value. CPU and
-  context-switch deltas have the same interval mismatch, and memory is sampled
-  after destruction. The end barrier releases workers before this snapshot, so
-  included worker cleanup also depends on scheduling.
-- **Recommendation:** Capture the ending resources at the shared operation
-  boundary and hold every worker until that capture finishes, before deferred
-  cleanup. Form the delta from that saved snapshot. Verify with destructor-only
-  resource work so cleanup cannot be attributed to the operation.
-- **Fix with:** `lifecycle-concurrency`
-- **Effort:** M (days)
-
 ### RUST-29 · P2 · Zero sampling budgets panic or silently skip test execution
 
 - **Area:** Config

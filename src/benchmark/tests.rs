@@ -13,6 +13,52 @@ const SAMPLE_SIZE: u32 = 2;
 
 const THREAD_COUNTS: &[usize] = &[1, 2, 3, 4, 5, 6, 9];
 
+#[test]
+#[ignore]
+fn deferred_resource_probe() {
+    use std::sync::atomic::AtomicU64;
+    static DROP_RSS: AtomicU64 = AtomicU64::new(u64::MAX);
+    struct DropResources;
+    impl Drop for DropResources {
+        fn drop(&mut self) {
+            let bytes = black_box(vec![42u8; 32 * 1024 * 1024]);
+            let snapshot = ProcessResourceSnapshot::capture();
+            DROP_RSS.fetch_min(snapshot.memory.rss_bytes.unwrap(), SeqCst);
+            std::mem::forget(bytes);
+        }
+    }
+    struct SizedOutput(u8, DropResources);
+    for threads in [1, 2] {
+        for branch in 0..3 {
+            DROP_RSS.store(u64::MAX, SeqCst);
+            let options = BenchOptions {
+                sample_count: Some(1), sample_size: Some(1),
+                ..BenchOptions::default()
+            };
+            let shared = SharedContext { action: Action::Bench, thread_pool: ThreadPool::new() };
+            let mut context = BenchContext::new(&shared, &options, NonZeroUsize::new(threads).unwrap());
+            let bencher = Bencher::new(&mut context);
+            match branch {
+                0 => bencher.bench(|| DropResources),
+                1 => bencher.bench(|| SizedOutput(black_box(1), DropResources)),
+                2 => bencher.with_inputs(|| SizedOutput(black_box(1), DropResources))
+                    .bench_refs(|value| black_box(value.0)),
+                _ => unreachable!(),
+            }
+            let rss = context.samples.process_resources[0].memory.rss_bytes.unwrap();
+            assert!(rss + 16 * 1024 * 1024 < DROP_RSS.load(SeqCst), "deferred cleanup included in resources: branch={branch} threads={threads}");
+        }
+    }
+}
+
+#[test]
+fn resource_snapshot_precedes_deferred_cleanup_on_every_worker() {
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "benchmark::tests::deferred_resource_probe", "--ignored", "--nocapture"])
+        .output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+}
+
 #[track_caller]
 fn test_bencher(test: &mut dyn FnMut(Bencher)) {
     let bench_options = BenchOptions {

@@ -1000,6 +1000,7 @@ impl<'a> BenchContext<'a> {
             // threads still pass the same synchronization barriers, so the
             // resulting delta covers the complete process sample once.
             let process_resource_start: Option<ProcessResourceSnapshot>;
+            let process_resource_end: Option<ProcessResourceSnapshot>;
             #[cfg(target_os = "linux")]
             let mut syscall_marker_started = false;
             #[cfg(target_os = "linux")]
@@ -1031,9 +1032,6 @@ impl<'a> BenchContext<'a> {
                     None
                 };
 
-                // Synchronize all threads.
-                //
-                // This is the final synchronization point for the end.
                 if let Some(barrier) = barrier {
                     barrier.wait();
                 }
@@ -1045,19 +1043,11 @@ impl<'a> BenchContext<'a> {
                     alloc_info.clear();
                 }
 
-                if is_start {
-                    let resource_start = on_boundary.and_then(|on_boundary| on_boundary());
-
-                    if let Some(barrier) = barrier {
-                        barrier.wait();
-                    }
-                    resource_start
-                } else {
-                    if let Some(on_boundary) = on_boundary {
-                        on_boundary();
-                    }
-                    None
+                let snapshot = on_boundary.and_then(|on_boundary| on_boundary());
+                if let Some(barrier) = barrier {
+                    barrier.wait();
                 }
+                snapshot
             }
 
             #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
@@ -1091,7 +1081,7 @@ impl<'a> BenchContext<'a> {
                         }
                     }
 
-                    None
+                    Some(ProcessResourceSnapshot::capture_unprofiled())
                 });
                 sync_impl(barrier, is_start, on_boundary)
             };
@@ -1138,7 +1128,7 @@ impl<'a> BenchContext<'a> {
                 }
 
                 sample_end = Timestamp::end();
-                let _ = sync_threads(false);
+                process_resource_end = sync_threads(false);
                 save_alloc_info();
 
                 // Drop outputs and inputs.
@@ -1199,7 +1189,7 @@ impl<'a> BenchContext<'a> {
                         }
 
                         sample_end = Timestamp::end();
-                        let _ = sync_threads(false);
+                        process_resource_end = sync_threads(false);
                         save_alloc_info();
 
                         // Prevent the optimizer from removing writes to inputs
@@ -1254,7 +1244,7 @@ impl<'a> BenchContext<'a> {
                         }
 
                         sample_end = Timestamp::end();
-                        let _ = sync_threads(false);
+                        process_resource_end = sync_threads(false);
                         save_alloc_info();
 
                         // Prevent the optimizer from removing writes to inputs
@@ -1277,9 +1267,8 @@ impl<'a> BenchContext<'a> {
             }
 
             let interval = [sample_start, sample_end];
-            let process_resources = process_resource_start.map(|start| {
-                ProcessResourceDelta::between(start, ProcessResourceSnapshot::capture_unprofiled())
-            });
+            let process_resources = process_resource_start.zip(process_resource_end)
+                .map(|(start, end)| ProcessResourceDelta::between(start, end));
 
             #[cfg(target_os = "linux")]
             if let Some(error) = syscall_marker_error {

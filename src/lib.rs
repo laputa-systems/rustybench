@@ -569,6 +569,16 @@ pub fn black_box_drop<T>(dummy: T) {
 /// [`VecDeque`]: std::collections::VecDeque
 /// [`HashSet`]: std::collections::HashSet
 ///
+/// Runtime argument types and expressions can use the selected type and const
+/// parameters. Each instantiation initializes its own argument collection:
+///
+/// ```
+/// #[rustybench::bench(types = [u8, u16], args = [T::default()])]
+/// fn echo<T: Default + Copy + Send + Sync>(value: T) -> T {
+///     value
+/// }
+/// ```
+///
 /// ## `sample_count`
 /// [`sample_count`]: #sample_count
 ///

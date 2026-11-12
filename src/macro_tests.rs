@@ -118,9 +118,57 @@ fn callable_generic_bounds_register_and_execute() {
     let paths: Vec<_> = tree_paths().into_iter().filter(|path| path.contains("callable_bound")).collect();
     let mut runner = Rustybench::default().run_only_ignored();
     for path in tree_paths().into_iter().filter(|path| !paths.contains(path)) {
-        runner = runner.skip_exact(path);
+        runner = runner.skip_regex(format!("^{}(::|$)", regex_lite::escape(&path)));
     }
     runner.test_benches();
+}
+
+static GENERIC_ARG_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+#[crate::bench(crate = crate, ignore, types = [u8, u16], args = [T::default()])]
+fn generic_arg_value<T: Default + Copy + Send + Sync>(value: T) -> T {
+    GENERIC_ARG_CALLS.fetch_add(1, SeqCst);
+    value
+}
+
+#[crate::bench(crate = crate, ignore, types = [u8, u16], args = [T::default()])]
+fn generic_arg_ref<T: Default + Send + Sync>(value: &T) {
+    GENERIC_ARG_CALLS.fetch_add(1, SeqCst);
+    crate::black_box(value);
+}
+
+#[crate::bench(crate = crate, ignore, types = [u8, u16], args = [T::default()])]
+fn generic_arg_bencher<T: Default + Copy + Send + Sync>(bencher: crate::Bencher, value: T) {
+    bencher.bench(|| {
+        GENERIC_ARG_CALLS.fetch_add(1, SeqCst);
+        crate::black_box(value);
+    });
+}
+
+#[crate::bench(crate = crate, ignore, types = [u8, u16], consts = [1usize, 2usize], args = [[T::default(); N]])]
+fn generic_arg_array<T: Default + Copy + Send + Sync, const N: usize>(value: &[T; N]) {
+    GENERIC_ARG_CALLS.fetch_add(1, SeqCst);
+    crate::black_box(value);
+}
+
+#[crate::bench(crate = crate, ignore, types = [u8], args = [])]
+fn generic_arg_empty<T: Copy + Send + Sync>(value: T) { crate::black_box(value); }
+
+#[crate::bench(crate = crate, ignore, types = [String], args = [String::from("owned")])]
+fn generic_arg_coercion<T>(value: &str) {
+    GENERIC_ARG_CALLS.fetch_add(1, SeqCst);
+    crate::black_box((value, std::mem::size_of::<T>()));
+}
+
+#[test]
+fn generic_argument_types_execute_with_separate_storage_and_existing_coercions() {
+    let mut runner = Rustybench::default().run_only_ignored();
+    for path in tree_paths().into_iter().filter(|path| !path.contains("generic_arg_")) {
+        runner = runner.skip_regex(format!("^{}(::|$)", regex_lite::escape(&path)));
+    }
+    GENERIC_ARG_CALLS.store(0, SeqCst);
+    runner.test_benches();
+    assert_eq!(GENERIC_ARG_CALLS.load(SeqCst), 11);
 }
 
 mod collision_a {

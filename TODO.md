@@ -1,24 +1,6 @@
 Prefix: RUST
 Next: 35
 
-### RUST-34 · P2 · Generic runtime-argument types escape their scope during macro expansion
-
-- **Area:** Types
-- **Where:** `macros/src/lib.rs:106`, `macros/src/lib.rs:119`, `macros/src/lib.rs:142`, `src/lib.rs:550`
-- **Problem:** Combining `types` and `args` is supported, but expansion substitutes
-  selected generics only into the function call. It copies the argument type
-  into an `Arg::<...>` outside the generic function without substitution.
-  Compiling `#[rustybench::bench(types = [u8], args = [1u8])] fn echo<T: Copy +
-  Send + Sync>(arg: T) -> T { arg }` fails with E0425, `cannot find type T in
-  this scope`. The documented combined example uses a nongeneric argument and
-  does not exercise this case.
-- **Recommendation:** Resolve the argument type for each instantiation, or move
-  conversion into a generated generic helper where those names remain in scope.
-  Preserve existing borrowing/coercion behavior and cover direct and referenced
-  generic argument types.
-- **Fix with:** `typing-audit`
-- **Effort:** M (days)
-
 ### RUST-24 · P3 · `allocator_api` warns on nightlies after the pin
 
 - **Area:** Build

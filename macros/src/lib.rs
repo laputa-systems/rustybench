@@ -33,6 +33,8 @@ pub(crate) struct FunctionInfo {
     pub has_const_param: bool,
     pub type_before_const: bool,
     pub const_type: Option<TokenStream>,
+    pub type_name: Option<String>,
+    pub const_name: Option<String>,
     pub is_extern_abi: bool,
     pub ignored: bool,
 }
@@ -42,6 +44,8 @@ struct GenericInfo {
     type_index: Option<usize>,
     const_index: Option<usize>,
     const_type: Option<TokenStream>,
+    type_name: Option<String>,
+    const_name: Option<String>,
 }
 
 #[proc_macro_attribute]
@@ -171,6 +175,15 @@ fn generate_bench(function: &FunctionInfo, options: &AttrOptions) -> TokenStream
         }
 
         let bench_fn = make_bench_fn(&generics);
+        let bench_fn = if options.args_expr.is_some() {
+            let type_alias = ty.map(|ty| format!("type {} = {};", function.type_name.as_ref().unwrap(), tokens::display(ty)))
+                .unwrap_or_default();
+            let const_alias = const_value.as_ref().map(|value| format!("const {}: {} = {value};", function.const_name.as_ref().unwrap(), tokens::display(function.const_type.as_ref().unwrap())))
+                .unwrap_or_default();
+            format!("{{ {type_alias} {const_alias} {bench_args_global} {bench_fn} }}")
+        } else {
+            bench_fn
+        };
         let type_value = ty.map(|ty| {
             format!(
                 "Some({private_mod}::EntryType::new::<{}>())",
@@ -230,7 +243,6 @@ fn generate_bench(function: &FunctionInfo, options: &AttrOptions) -> TokenStream
                         private_mod,
                         &static_ident,
                         &meta,
-                        &bench_args_global,
                         format!("&[&[{entries}]]"),
                     )
                 }
@@ -262,7 +274,6 @@ fn generate_bench(function: &FunctionInfo, options: &AttrOptions) -> TokenStream
                     private_mod,
                     &static_ident,
                     &meta,
-                    &bench_args_global,
                     format!(
                         "{{ const __RUSTYBENCH_CONSTS: &[{}] = &{}; &[{groups}] }}",
                         tokens::display(const_type),
@@ -298,7 +309,6 @@ fn generate_bench(function: &FunctionInfo, options: &AttrOptions) -> TokenStream
                     private_mod,
                     &static_ident,
                     &meta,
-                    &bench_args_global,
                     format!(
                         "{{ const __RUSTYBENCH_CONST_COUNT: usize = __RUSTYBENCH_CONSTS.len(); const __RUSTYBENCH_CONSTS: &[{}] = &{}; &[{groups}] }}",
                         tokens::display(const_type),
@@ -316,11 +326,10 @@ fn make_generic_group(
     private_mod: &str,
     static_ident: &str,
     meta: &str,
-    bench_args_global: &str,
     generic_benches: String,
 ) -> String {
     format!(
-        "{} static {static_ident}: {private_mod}::GroupEntry = {{ {{ {} static PUSH: extern \"C\" fn() = push; extern \"C\" fn push() {{ static NODE: {private_mod}::EntryList<{private_mod}::GroupEntry> = {private_mod}::EntryList::new(&{static_ident}); {private_mod}::GROUP_ENTRIES.push(&NODE); }} }} {bench_args_global} {private_mod}::GroupEntry {{ meta: {meta}, generic_benches: Some({generic_benches}) }} }};",
+        "{} static {static_ident}: {private_mod}::GroupEntry = {{ {{ {} static PUSH: extern \"C\" fn() = push; extern \"C\" fn push() {{ static NODE: {private_mod}::EntryList<{private_mod}::GroupEntry> = {private_mod}::EntryList::new(&{static_ident}); {private_mod}::GROUP_ENTRIES.push(&NODE); }} }} {private_mod}::GroupEntry {{ meta: {meta}, generic_benches: Some({generic_benches}) }} }};",
         unsupported_error("bench"),
         pre_main_attrs()
     )
@@ -377,6 +386,8 @@ fn parse_function(item: &TokenStream) -> Result<FunctionInfo, TokenStream> {
         has_const_param: generic.const_index.is_some(),
         type_before_const: matches!((generic.type_index, generic.const_index), (Some(ty), Some(c)) if ty < c),
         const_type: generic.const_type,
+        type_name: generic.type_name,
+        const_name: generic.const_name,
         is_extern_abi,
         ignored,
     })
@@ -416,6 +427,7 @@ fn parse_generics(tokens: &[TokenTree]) -> GenericInfo {
         if tokens::is_ident(&parameter[0], "const") {
             if generic.const_index.is_none() {
                 generic.const_index = Some(index);
+                generic.const_name = parameter.get(1).map(ToString::to_string);
                 if let Some(colon) = parameter
                     .iter()
                     .position(|token| tokens::is_punct(token, ':'))
@@ -426,6 +438,7 @@ fn parse_generics(tokens: &[TokenTree]) -> GenericInfo {
             }
         } else if matches!(parameter[0], TokenTree::Ident(_)) && generic.type_index.is_none() {
             generic.type_index = Some(index);
+            generic.type_name = Some(parameter[0].to_string());
         }
     }
     generic

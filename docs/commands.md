@@ -60,9 +60,13 @@ Collection combines every schema-1 report emitted by a command, including
 reports from multiple benchmark targets. Duplicate benchmark names and invalid
 reports fail collection before replacing the baseline.
 
-Collection currently assumes Cargo-style argument forwarding. Keep the benchmark
-inventory constant across measured runs; collection does not yet reject missing
-observations. These defects are tracked in [TODO.md](../TODO.md).
+Every measured command must report the same benchmark inventory exactly once,
+with nonzero samples and iterations for each entry. Missing or added entries
+fail collection without replacing the baseline. Child diagnostics are relayed
+to stderr.
+
+Collection currently assumes Cargo-style argument forwarding; direct benchmark
+executables are tracked in [TODO.md](../TODO.md).
 
 Set `RUSTYBENCH_BENCH_RUSTFLAGS` to replace the child benchmark command's
 `RUSTFLAGS`. Inherited `RUSTFLAGS` are not kept. This does not change flags

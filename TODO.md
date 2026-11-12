@@ -1,27 +1,6 @@
 Prefix: RUST
 Next: 35
 
-### RUST-27 · P2 · Incomplete measured runs are accepted as complete baselines
-
-- **Area:** Data
-- **Where:** `src/bin/rustybench.rs:248`, `src/bin/rustybench.rs:386`, `src/bin/rustybench.rs:418`, `src/rustybench.rs:379`
-- **Problem:** Aggregation unions benchmark names across runs without checking
-  per-run uniqueness or completeness. A real consumer with a stable benchmark
-  and a `Bencher` callback that calls `bench_local` only on the first process
-  invocation produced a successful three-run baseline with one observation for
-  the conditional benchmark and three for the stable benchmark. The runner's
-  missing-operation warning disappears because successful-child stderr is
-  discarded. A budget check accepts the resulting inventory even though its
-  metrics do not represent the requested experiment. Duplicate names likewise
-  become extra observations instead of an error.
-- **Recommendation:** Require exactly one record per expected identity in every
-  measured run before computing or writing a baseline. Reject missing and
-  duplicate observations while preserving the old file, and relay actionable
-  child diagnostics. Cover an omitted result and duplicate result through the
-  actual collector.
-- **Fix with:** `make-invalid-states-unrepresentable`
-- **Effort:** S (hours)
-
 ### RUST-28 · P2 · Process-resource samples include deferred destruction
 
 - **Area:** Data

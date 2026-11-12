@@ -254,7 +254,7 @@ fn baseline(arguments: Vec<OsString>) -> Result<(), String> {
         runs.push(report);
     }
 
-    let current = aggregate_reports(&runs);
+    let current = aggregate_reports(&runs)?;
     if current.is_empty() {
         return Err("benchmark command produced no rustybench JSON records".to_owned());
     }
@@ -389,6 +389,8 @@ fn run_benchmark(
     if !output.status.success() {
         return Err(format_command_failure(&command, &output));
     }
+    std::io::stderr().write_all(&output.stderr)
+        .map_err(|error| format!("could not relay benchmark diagnostics: {error}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     parse_benchmark_reports(&stdout)
 }
@@ -437,9 +439,28 @@ fn format_command_failure(command: &[OsString], output: &std::process::Output) -
     )
 }
 
-fn aggregate_reports(reports: &[BenchmarkReport]) -> Vec<BaselineRecord> {
+fn aggregate_reports(reports: &[BenchmarkReport]) -> Result<Vec<BaselineRecord>, String> {
+    let mut expected: Option<std::collections::BTreeSet<&str>> = None;
     let mut values: FxHashMap<String, Vec<BenchmarkRecord>> = FxHashMap::default();
-    for report in reports {
+    for (index, report) in reports.iter().enumerate() {
+        let mut names = std::collections::BTreeSet::new();
+        for record in &report.benchmarks {
+            if !names.insert(record.name.as_str()) {
+                return Err(format!("measured run {} has duplicate benchmark identity {:?}", index + 1, record.name));
+            }
+            if record.sample_count == 0 || record.iter_count == 0 {
+                return Err(format!("measured run {} has no samples or iterations for {:?}", index + 1, record.name));
+            }
+        }
+        if let Some(expected) = &expected {
+            if &names != expected {
+                let missing: Vec<_> = expected.difference(&names).copied().collect();
+                let added: Vec<_> = names.difference(expected).copied().collect();
+                return Err(format!("measured run {} has a different benchmark inventory: missing {missing:?}, added {added:?}", index + 1));
+            }
+        } else {
+            expected = Some(names);
+        }
         for record in &report.benchmarks {
             values
                 .entry(record.name.clone())
@@ -459,9 +480,8 @@ fn aggregate_reports(reports: &[BenchmarkReport]) -> Vec<BaselineRecord> {
             run_median_ns: Some(records.iter().map(|record| record.median_ns).collect()),
         })
         .collect();
-    // Hash iteration order is unspecified; baselines list benchmarks by name.
     records.sort_unstable_by(|a, b| a.name.cmp(&b.name));
-    records
+    Ok(records)
 }
 
 fn median(values: impl Iterator<Item = u64>) -> u64 {
@@ -1219,6 +1239,37 @@ mod tests {
         assert!(error.contains("invalid benchmark report"), "{error}");
     }
 
+    #[test]
+    fn collection_rejects_missing_added_and_empty_observations() {
+        for (first, second) in [
+            (vec![benchmark("stable", 1), benchmark("conditional", 2)], vec![benchmark("stable", 1)]),
+            (vec![benchmark("stable", 1)], vec![benchmark("stable", 1), benchmark("added", 2)]),
+            (vec![benchmark("stable", 1)], vec![]),
+        ] {
+            let files = temporary_baseline_files(vec![], vec![budget_record()]);
+            let previous = fs::read(&files.candidate).unwrap();
+            let state = files.directory.join("invoked");
+            let script = format!(
+                "if test -e {state}; then\n{second}\nelse\ntouch {state}\n{first}\nfi",
+                state = shell_quote(state.to_str().unwrap()),
+                first = report_producer(&[report(first)])[2].to_str().unwrap(),
+                second = report_producer(&[report(second)])[2].to_str().unwrap(),
+            );
+            let error = collect_to(&files, vec!["sh".into(), "-c".into(), script.into(), "producer".into()], 2).unwrap_err();
+            assert!(error.contains("different benchmark inventory"), "{error}");
+            assert_eq!(fs::read(&files.candidate).unwrap(), previous);
+        }
+        for zero_samples in [false, true] {
+            let files = temporary_baseline_files(vec![], vec![budget_record()]);
+            let previous = fs::read(&files.candidate).unwrap();
+            let mut record = benchmark("empty", 1);
+            if zero_samples { record.sample_count = 0; } else { record.iter_count = 0; }
+            let error = collect_to(&files, report_producer(&[report(vec![record])]), 1).unwrap_err();
+            assert!(error.contains("no samples or iterations"), "{error}");
+            assert_eq!(fs::read(&files.candidate).unwrap(), previous);
+        }
+    }
+
     fn baseline_file(records: Vec<BaselineRecord>) -> BaselineFile {
         BaselineFile {
             schema: BASELINE_SCHEMA,
@@ -1461,7 +1512,7 @@ mod tests {
             report(vec![benchmark("stable", 30), benchmark("changing", 100)]),
             report(vec![benchmark("stable", 10), benchmark("changing", 300)]),
             report(vec![benchmark("stable", 20), benchmark("changing", 200)]),
-        ]);
+        ]).unwrap();
 
         assert_eq!(records[0].name, "changing");
         assert_eq!(records[0].median_ns, 200);

@@ -85,6 +85,6 @@ for the `rustybench` tool itself.
 
 `rustybench syscalls` exposes a Linux-only Docker and `strace` diagnostic with
 defaults of 10 samples and 100 iterations. It requires Docker and `SYS_PTRACE`.
-The current command fails at image-build dispatch; its benchmark-name selection
-also needs repair. See [TODO.md](../TODO.md). Its output contract is a human
+The image is built from `--root` on the host before container commands run.
+Benchmark-name selection still needs repair. See [TODO.md](../TODO.md). Its output contract is a human
 table or diagnostic JSON, separate from benchmark timing.

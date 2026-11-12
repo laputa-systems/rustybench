@@ -950,7 +950,7 @@ fn run_syscall_diagnostic(
     sample_size: u32,
     format: SyscallFormat,
 ) -> Result<(), String> {
-    docker(root, &["build", "--quiet", "-t", SYSCALL_IMAGE, "."])?;
+    docker_build(root)?;
     let executable = docker_capture(
         root,
         "cargo bench --bench bench --no-run --message-format=json",
@@ -1033,9 +1033,9 @@ struct CargoTarget {
     name: String,
 }
 
-fn docker(root: &Path, arguments: &[&str]) -> Result<(), String> {
-    let mut command = docker_base(root);
-    command.args(arguments);
+fn docker_build(root: &Path) -> Result<(), String> {
+    let mut command = Command::new("docker");
+    command.current_dir(root).args(["build", "--quiet", "-t", SYSCALL_IMAGE, "."]);
     command.stdout(Stdio::null());
     let status = command
         .status()
@@ -1186,6 +1186,38 @@ mod tests {
             schema: BASELINE_SCHEMA,
             benchmarks: records,
         }
+    }
+
+    #[test]
+    #[ignore]
+    fn syscall_dispatch_probe() {
+        let root = PathBuf::from(env::var_os("RUSTYBENCH_FIXTURE_ROOT").unwrap());
+        let error = run_syscall_diagnostic(&root, 1, 1, SyscallFormat::Json).unwrap_err();
+        assert!(error.contains("17"), "{error}");
+    }
+
+    #[test]
+    fn docker_build_and_container_commands_are_distinct() {
+        use std::os::unix::fs::PermissionsExt;
+        let files = temporary_baseline_files(vec![], vec![]);
+        let executable = files.directory.join("docker");
+        let log = files.directory.join("docker.log");
+        fs::write(&executable, format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$*\" >> {}\nif [ \"$1\" = build ]; then\n[ \"$*\" = 'build --quiet -t benchmark-syscalls:local .' ] || exit 19\nexit 0\nfi\nexit 17\n", shell_quote(log.to_str().unwrap())
+        )).unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = env::join_paths(std::iter::once(files.directory.clone())
+            .chain(env::split_paths(&env::var_os("PATH").unwrap()))).unwrap();
+        let output = Command::new(env::current_exe().unwrap())
+            .args(["--exact", "tests::syscall_dispatch_probe", "--ignored", "--nocapture"])
+            .env("RUSTYBENCH_FIXTURE_ROOT", &files.directory).env("PATH", path).output().unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let calls = fs::read_to_string(log).unwrap();
+        let lines: Vec<_> = calls.lines().collect();
+        assert_eq!(lines[0], files.directory.to_str().unwrap());
+        assert_eq!(lines[1], "build --quiet -t benchmark-syscalls:local .");
+        assert!(lines[3].starts_with("run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v "), "{calls}");
+        assert!(lines[3].contains("benchmark-syscalls:local sh -lc cargo bench"), "{calls}");
     }
 
     fn report_producer(reports: &[BenchmarkReport]) -> Vec<OsString> {

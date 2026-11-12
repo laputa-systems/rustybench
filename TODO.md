@@ -1,23 +1,6 @@
 Prefix: RUST
 Next: 35
 
-### RUST-30 · P2 · The syscall diagnostic dispatches its image build as a container command
-
-- **Area:** Operability
-- **Where:** `src/bin/rustybench.rs:907`, `src/bin/rustybench.rs:990`, `src/bin/rustybench.rs:1016`
-- **Problem:** The initial Docker build goes through `docker_base`, which always
-  prefixes `run ... benchmark-syscalls:local`. A recording Docker executable
-  confirms that `rustybench syscalls --root ROOT` invokes
-  `docker run ... benchmark-syscalls:local build --quiet -t benchmark-syscalls:local .`.
-  Docker never receives a build subcommand: a clean host has no image, and an
-  existing image would execute a program named `build` inside the container.
-  The advertised diagnostic therefore cannot reach collection.
-- **Recommendation:** Run the image build as a separate host-side Docker command
-  with `current_dir(root)`. Reserve the container-run helper for commands inside
-  the image, and check the external argv for both operations.
-- **Fix with:** `isolate-effects`
-- **Effort:** S (hours)
-
 ### RUST-31 · P2 · Syscall collection substitutes group labels for benchmark identities
 
 - **Area:** Data

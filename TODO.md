@@ -1,23 +1,6 @@
 Prefix: RUST
 Next: 35
 
-### RUST-33 · P2 · Callable generic bounds are parsed as benchmark parameters
-
-- **Area:** Architecture
-- **Where:** `macros/src/lib.rs:334`, `macros/src/lib.rs:346`, `macros/src/lib.rs:126`
-- **Problem:** `parse_function` treats the first parenthesized token group after
-  the function name as its parameters, including parentheses inside generic
-  bounds. Compiling `#[rustybench::bench(types = [fn(u32)])] fn callable<T:
-  Fn(u32)>() { rustybench::black_box(std::mem::size_of::<T>()); }` fails with
-  E0308: the generated code expects `fn(Bencher)` but receives a zero-argument
-  function. The macro mistakes `Fn(u32)` for the benchmark's argument list.
-- **Recommendation:** Locate parameters after the complete generic declaration,
-  preferably by parsing the signature with the existing `syn` dependency.
-  Exercise callable bounds with nonempty argument lists at the public macro
-  compilation boundary.
-- **Fix with:** `api-surface-and-module-boundaries`
-- **Effort:** S (hours)
-
 ### RUST-34 · P2 · Generic runtime-argument types escape their scope during macro expansion
 
 - **Area:** Types

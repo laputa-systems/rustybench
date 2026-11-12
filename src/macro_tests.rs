@@ -101,6 +101,28 @@ fn generic_type_with_arrow<T>() {
     let _ = std::marker::PhantomData::<T>;
 }
 
+#[crate::bench(crate = crate, ignore, types = [fn(u32)])]
+fn callable_bound<T: Fn(u32)>() {
+    crate::black_box(std::mem::size_of::<T>());
+}
+
+#[crate::bench(crate = crate, ignore, types = [fn(u32) -> u32], consts = [1usize])]
+fn callable_bound_with_return<T: Fn(u32) -> u32, const N: usize>(bencher: crate::Bencher) {
+    bencher.bench(|| crate::black_box(std::mem::size_of::<T>() + N));
+}
+
+#[test]
+fn callable_generic_bounds_register_and_execute() {
+    assert_eq!(find_group("callable_bound").generic_benches_iter().count(), 1);
+    assert_eq!(find_group("callable_bound_with_return").generic_benches_iter().count(), 1);
+    let paths: Vec<_> = tree_paths().into_iter().filter(|path| path.contains("callable_bound")).collect();
+    let mut runner = Rustybench::default().run_only_ignored();
+    for path in tree_paths().into_iter().filter(|path| !paths.contains(path)) {
+        runner = runner.skip_exact(path);
+    }
+    runner.test_benches();
+}
+
 mod collision_a {
     pub struct Widget;
 }

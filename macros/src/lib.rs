@@ -332,6 +332,8 @@ struct ModuleInfo {
 }
 
 fn parse_function(item: &TokenStream) -> Result<FunctionInfo, TokenStream> {
+    use syn::parse::Parser;
+
     let tokens: Vec<_> = item.clone().into_iter().collect();
     let ignored = has_ignore_attribute(&tokens);
     let Some(fn_index) = tokens
@@ -343,15 +345,16 @@ fn parse_function(item: &TokenStream) -> Result<FunctionInfo, TokenStream> {
     let Some(TokenTree::Ident(name)) = tokens.get(fn_index + 1) else {
         return Err(parse_error("expected a function name"));
     };
-    let Some((args_index, args_group)) =
-        tokens[fn_index + 2..]
-            .iter()
-            .enumerate()
-            .find_map(|(index, token)| {
-                tokens::group(token, Delimiter::Parenthesis)
-                    .map(|group| (index + fn_index + 2, group))
-            })
-    else {
+    let after_name = tokens::token_stream(tokens[fn_index + 2..].iter().cloned());
+    let parse_generics_prefix = |input: syn::parse::ParseStream| {
+        let _: syn::Generics = input.parse()?;
+        input.step(|cursor| Ok((cursor.token_stream(), syn::buffer::Cursor::empty())))
+    };
+    let remaining: TokenStream = parse_generics_prefix.parse(after_name)
+        .map_err(|error| parse_error(&error.to_string()))?.into();
+    let args_index = tokens.len() - remaining.into_iter().count();
+    let Some(args_group) = tokens.get(args_index)
+        .and_then(|token| tokens::group(token, Delimiter::Parenthesis)) else {
         return Err(parse_error("expected function arguments"));
     };
 
@@ -402,26 +405,8 @@ fn parse_generics(tokens: &[TokenTree]) -> GenericInfo {
     let Some(start) = tokens.iter().position(|token| tokens::is_punct(token, '<')) else {
         return generic;
     };
-    let mut depth = 0;
-    let mut content = Vec::new();
-    for token in &tokens[start..] {
-        if tokens::is_punct(token, '<') {
-            depth += 1;
-            if depth > 1 {
-                content.push(token.clone());
-            }
-        } else if tokens::is_punct(token, '>') {
-            depth -= 1;
-            if depth == 0 {
-                break;
-            }
-            content.push(token.clone());
-        } else if depth > 0 {
-            content.push(token.clone());
-        }
-    }
-
-    for (index, parameter) in tokens::split_top_level(&content, ',')
+    let content = &tokens[start + 1..tokens.len() - 1];
+    for (index, parameter) in tokens::split_top_level(content, ',')
         .into_iter()
         .enumerate()
     {

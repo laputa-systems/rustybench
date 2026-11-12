@@ -17,11 +17,26 @@ fn conditional(bencher: rustybench::Bencher) {
     }
 }
 
+#[rustybench::bench_group]
+mod nested {
+    #[rustybench::bench(args = ["a[1]", "b(2)"], threads = [1, 2])]
+    fn inputs(value: &str) { rustybench::black_box(value); }
+}
+
+#[rustybench::bench_group(ignore)]
+mod ignored {
+    #[rustybench::bench]
+    fn excluded() { panic!("ignored benchmark executed"); }
+}
+
 #[derive(Deserialize)]
 struct Baseline { benchmarks: Vec<Record>, measured_runs: u32 }
 
 #[derive(Deserialize)]
 struct Record { name: String, run_median_ns: Option<Vec<u64>> }
+
+#[derive(Deserialize)]
+struct Report { benchmarks: Vec<Record> }
 
 struct Scratch(PathBuf);
 impl Drop for Scratch {
@@ -54,10 +69,26 @@ fn main() {
     success(collect().arg(&executable).output().unwrap());
     let file: Baseline = deser_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(file.measured_runs, 2);
-    assert_eq!(file.benchmarks.len(), 4);
+    assert_eq!(file.benchmarks.len(), 8);
     assert!(file.benchmarks.iter().all(|record| record.run_median_ns.as_ref().unwrap().len() == 2));
     assert!(file.benchmarks.iter().any(|record| record.name.ends_with("a::Widget")));
     assert!(file.benchmarks.iter().any(|record| record.name.ends_with("b::Widget")));
+
+    let listing = success(Command::new(&executable).env("RUSTYBENCH_FIXTURE_CHILD", "1")
+        .args(["--list", "--format", "terse"]).output().unwrap());
+    let listing = String::from_utf8(listing).unwrap();
+    let names: Vec<_> = listing.lines().filter_map(|line| line.strip_suffix(": benchmark")).collect();
+    assert_eq!(names.len(), 8, "{listing}");
+    assert!(names.iter().any(|name| name.ends_with("inputs::a[1]::t=1")));
+    assert!(names.iter().any(|name| name.ends_with("inputs::b(2)::t=2")));
+    assert!(!listing.contains("excluded"));
+    for name in names {
+        let json = success(Command::new(&executable).env("RUSTYBENCH_FIXTURE_CHILD", "1")
+            .args(["--bench", "--format", "json", "--sample-count", "1", "--sample-size", "1", "--exact", name]).output().unwrap());
+        let report: Report = deser_json::from_str(std::str::from_utf8(&json).unwrap()).unwrap();
+        assert_eq!(report.benchmarks.len(), 1, "{name}");
+        assert_eq!(report.benchmarks[0].name, name);
+    }
 
     let script = format!("{exe} --bench --format json --sample-count 1 --sample-size 1 'colliding' && {exe} --bench --format json --sample-count 1 --sample-size 1 'stable$'", exe = quote(executable.to_str().unwrap()));
     success(collect().args(["sh", "-c", &script, "producer"]).output().unwrap());

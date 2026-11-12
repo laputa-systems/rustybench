@@ -1,4 +1,4 @@
-use std::{borrow::Cow, time::Duration};
+use std::{borrow::Cow, num::NonZeroUsize, time::Duration};
 
 use crate::{counter::CounterSet, time::FineDuration};
 
@@ -31,6 +31,22 @@ pub struct BenchOptions<'a> {
 }
 
 impl<'a> BenchOptions<'a> {
+    pub(crate) fn thread_names(&self, path: &str) -> Vec<(NonZeroUsize, String)> {
+        let mut counts: Vec<_> = self.threads.as_deref().unwrap_or_default().iter()
+            .map(|&count| NonZeroUsize::new(count).unwrap_or_else(crate::util::known_parallelism))
+            .collect();
+        counts.sort_unstable();
+        counts.dedup();
+        if counts.is_empty() {
+            counts.push(NonZeroUsize::MIN);
+        }
+        let branches = counts.len() > 1;
+        counts.into_iter().map(|count| {
+            let name = if branches { format!("{path}::t={count}") } else { path.to_owned() };
+            (count, name)
+        }).collect()
+    }
+
     /// Overwrites `other` with values set in `self`.
     #[must_use]
     pub(crate) fn overwrite<'b>(&'b self, other: &'b Self) -> Self

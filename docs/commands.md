@@ -7,7 +7,10 @@ below assume the repository's pinned toolchain is selected.
 
 Run `cargo bench --bench example -- --help` for the runner's options. Positional
 filters are regular expressions unless you pass `--exact`. `--skip` excludes
-matching names. `--test` runs selected benchmarks once without timing.
+matching names. Terse listings and JSON use full leaf paths, with `::t=N`
+when a benchmark has multiple thread counts. An exact path with that suffix
+selects one thread variant; the path without it selects all variants. `--test`
+runs selected benchmarks once without timing.
 
 The default sample count is 100. If `--sample-size` is omitted, Rustybench
 tunes the iterations per sample. With threaded benchmarks, sample count is
@@ -86,5 +89,7 @@ for the `rustybench` tool itself.
 `rustybench syscalls` exposes a Linux-only Docker and `strace` diagnostic with
 defaults of 10 samples and 100 iterations. It requires Docker and `SYS_PTRACE`.
 The image is built from `--root` on the host before container commands run.
-Benchmark-name selection still needs repair. See [TODO.md](../TODO.md). Its output contract is a human
-table or diagnostic JSON, separate from benchmark timing.
+The diagnostic consumes the runner's terse listing, respects ignored entries,
+and traces each full leaf identity with `--exact`. Missing begin or end markers
+fail collection. Its output is a human table or diagnostic JSON, separate from
+benchmark timing.

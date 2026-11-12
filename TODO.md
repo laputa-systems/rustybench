@@ -1,26 +1,6 @@
 Prefix: RUST
 Next: 35
 
-### RUST-31 · P2 · Syscall collection substitutes group labels for benchmark identities
-
-- **Area:** Data
-- **Where:** `src/bin/rustybench.rs:922`, `src/bin/rustybench.rs:940`, `src/rustybench.rs:175`
-- **Problem:** The diagnostic parses only unindented branch rows from the human
-  tree, then uses those labels as regular-expression filters. With the real
-  repository benchmark target, terse listing exposes seven enabled leaves, but
-  the current parser selects only `harness_overhead` and `workloads`. A Docker
-  fixture returning that actual listing after a successful build response made
-  the unmodified tool emit those two group names as benchmark records. Trace
-  commands lack `--exact`, collapse multiple functions/arguments, and include a
-  wholly ignored group. This defect remains after RUST-30 is repaired; the proof
-  covers command construction and selection, not live tracing.
-- **Recommendation:** Consume the runner's terse full-path leaf listing, apply
-  the same ignore policy, and select each identity with `--exact`. Preserve
-  argument/thread identity and reject missing marker bounds. Check nested
-  groups, arguments, ignored entries, and regex punctuation at this boundary.
-- **Fix with:** `single-source-of-truth`
-- **Effort:** S (hours)
-
 ### RUST-33 · P2 · Callable generic bounds are parsed as benchmark parameters
 
 - **Area:** Architecture

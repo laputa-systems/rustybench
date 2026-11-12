@@ -11,7 +11,9 @@ impl Filter {
     fn is_match(&self, s: &str) -> bool {
         match self {
             Self::Regex(regex) => regex.is_match(s),
-            Self::Exact(exact) => exact == s,
+            Self::Exact(exact) => exact == s || s.strip_prefix(exact)
+                .and_then(|suffix| suffix.strip_prefix("::t="))
+                .is_some_and(|count| !count.is_empty() && count.bytes().all(|byte| byte.is_ascii_digit())),
         }
     }
 }

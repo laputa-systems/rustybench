@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::{borrow::Cow, cell::RefCell, fmt, num::NonZeroUsize, time::Duration};
+use std::{borrow::Cow, cell::RefCell, fmt, time::Duration};
 
 use regex_lite::Regex;
 
@@ -111,7 +111,7 @@ impl Rustybench {
             EntryTree::insert_group(&mut tree, group);
         }
 
-        EntryTree::retain(&mut tree, |entry_path| self.filter(entry_path));
+        EntryTree::retain(&mut tree, &self.bench_options, |entry_path| self.filter(entry_path));
 
         if tree.is_empty() {
             return Ok(());
@@ -218,11 +218,18 @@ impl Rustybench {
                         continue;
                     }
 
+                    let print_path = |path: &str| {
+                        for (_, name) in merged.thread_names(path) {
+                            if self.filter(&name) {
+                                println!("{name}: benchmark");
+                            }
+                        }
+                    };
                     match args {
-                        None => println!("{full_path}: benchmark"),
+                        None => print_path(&full_path),
                         Some(args) => {
                             for arg in args {
-                                println!("{full_path}::{arg}: benchmark")
+                                print_path(&format!("{full_path}::{arg}"))
                             }
                         }
                     }
@@ -334,32 +341,16 @@ impl Rustybench {
             return Ok(());
         }
 
-        let mut thread_counts: Vec<NonZeroUsize> = options
-            .threads
-            .as_deref()
-            .unwrap_or_default()
-            .iter()
-            .map(|&n| match NonZeroUsize::new(n) {
-                Some(n) => n,
-                None => crate::util::known_parallelism(),
-            })
-            .collect();
-
-        thread_counts.sort_unstable();
-        thread_counts.dedup();
-
-        let thread_counts: &[NonZeroUsize] = if thread_counts.is_empty() {
-            &[NonZeroUsize::MIN]
-        } else {
-            &thread_counts
-        };
-
-        let has_thread_branches = thread_counts.len() > 1;
-
         let mut run_bench = |bench_display_name: &str,
                              is_last_bench: bool,
                              report_name: &str,
                              with_bencher: &dyn Fn(Bencher)| -> Result<(), String> {
+            let mut threads = options.thread_names(report_name);
+            let has_thread_branches = threads.len() > 1;
+            threads.retain(|(_, name)| self.filter(name));
+            if threads.is_empty() {
+                return Ok(());
+            }
             if has_thread_branches {
                 tree_painter
                     .borrow_mut()
@@ -370,9 +361,10 @@ impl Rustybench {
                     .start_leaf(bench_display_name, is_last_bench);
             }
 
-            for (i, &thread_count) in thread_counts.iter().enumerate() {
+            for (i, (thread_count, report_name)) in threads.iter().enumerate() {
+                let thread_count = *thread_count;
                 let is_last_thread_count = if has_thread_branches {
-                    i == thread_counts.len() - 1
+                    i == threads.len() - 1
                 } else {
                     is_last_bench
                 };
@@ -403,12 +395,7 @@ impl Rustybench {
                     let stats = bench_context.compute_stats()
                         .map_err(|error| format!("{report_name}: {error}"))?;
                     if self.output_format == OutputFormat::Json {
-                        let report_name = if has_thread_branches {
-                            format!("{report_name}::t={thread_count}")
-                        } else {
-                            report_name.to_owned()
-                        };
-                        report.push(BenchmarkRecord::from_stats(&report_name, &stats));
+                        report.push(BenchmarkRecord::from_stats(report_name, &stats));
                     }
 
                     tree_painter.borrow_mut().finish_leaf(

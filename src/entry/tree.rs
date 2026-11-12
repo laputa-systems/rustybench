@@ -146,13 +146,19 @@ impl<'a> EntryTree<'a> {
         }
     }
 
-    pub fn retain(tree: &mut Vec<Self>, mut filter: impl FnMut(&str) -> bool) {
+    pub fn retain(tree: &mut Vec<Self>, root_options: &BenchOptions, mut filter: impl FnMut(&str) -> bool) {
         fn retain(
             tree: &mut Vec<EntryTree>,
             parent_path: &str,
+            parent_options: &BenchOptions,
+            root_options: &BenchOptions,
             filter: &mut impl FnMut(&str) -> bool,
         ) {
             tree.retain_mut(|subtree| {
+                let options = subtree.bench_options()
+                    .map(|options| options.overwrite(parent_options))
+                    .unwrap_or_else(|| parent_options.clone());
+                let resolved = root_options.overwrite(&options);
                 let subtree_path: String;
                 let subtree_path: &str = if parent_path.is_empty() {
                     subtree.display_name()
@@ -163,24 +169,26 @@ impl<'a> EntryTree<'a> {
 
                 match subtree {
                     EntryTree::Parent { children, .. } => {
-                        retain(children, subtree_path, filter);
+                        retain(children, subtree_path, &options, root_options, filter);
 
                         !children.is_empty()
                     }
 
-                    EntryTree::Leaf { args: None, .. } => filter(subtree_path),
+                    EntryTree::Leaf { args: None, .. } => resolved.thread_names(subtree_path)
+                        .iter().any(|(_, name)| filter(name)),
 
                     EntryTree::Leaf {
                         args: Some(args), ..
                     } => {
-                        args.retain(|arg| filter(&format!("{subtree_path}::{arg}")));
+                        args.retain(|arg| resolved.thread_names(&format!("{subtree_path}::{arg}"))
+                            .iter().any(|(_, name)| filter(name)));
 
                         !args.is_empty()
                     }
                 }
             });
         }
-        retain(tree, "", &mut filter);
+        retain(tree, "", &BenchOptions::default(), root_options, &mut filter);
     }
 
     pub fn sort_by_attr(tree: &mut [Self], attr: SortingAttr, reverse: bool) {

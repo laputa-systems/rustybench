@@ -967,16 +967,14 @@ fn run_syscall_diagnostic(
     .ok_or_else(|| "could not find benchmark executable in cargo JSON".to_owned())?;
     let mut names = docker_capture(
         root,
-        &format!("{} --bench --list", shell_quote(&executable)),
+        &format!("{} --bench --list --format terse", shell_quote(&executable)),
     )?
     .lines()
     .filter_map(|line| {
-        line.strip_prefix("├─ ")
-            .or_else(|| line.strip_prefix("╰─ "))
+        line.strip_suffix(": benchmark")
     })
     .map(ToOwned::to_owned)
     .collect::<Vec<_>>();
-    // The listing order is not guaranteed; run benchmarks in name order.
     names.sort_unstable();
     names.dedup();
     if names.is_empty() {
@@ -985,7 +983,7 @@ fn run_syscall_diagnostic(
     let mut benchmarks = Vec::with_capacity(names.len());
     for name in names {
         let command = format!(
-            "rm -f /tmp/strace-events && RUSTYBENCH_SYSCALL_TRACE=1 strace -f -qq -o /tmp/strace-events {} --bench {} --sample-count {} --sample-size {} >/dev/null 2>&1 && cat /tmp/strace-events",
+            "rm -f /tmp/strace-events && RUSTYBENCH_SYSCALL_TRACE=1 strace -f -qq -o /tmp/strace-events {} --bench --exact {} --sample-count {} --sample-size {} >/dev/null 2>&1 && cat /tmp/strace-events",
             shell_quote(&executable),
             shell_quote(&name),
             sample_count,
@@ -993,6 +991,9 @@ fn run_syscall_diagnostic(
         );
         let trace = docker_capture(root, &command)?;
         let parsed = parse_syscalls(&trace);
+        if parsed.marker_status != "bounded" {
+            return Err(format!("{name}: syscall trace has {} markers", parsed.marker_status));
+        }
         benchmarks.push(SyscallBenchmark {
             name: name.clone(),
             marker_status: parsed.marker_status.to_owned(),
@@ -1192,8 +1193,57 @@ mod tests {
     #[ignore]
     fn syscall_dispatch_probe() {
         let root = PathBuf::from(env::var_os("RUSTYBENCH_FIXTURE_ROOT").unwrap());
-        let error = run_syscall_diagnostic(&root, 1, 1, SyscallFormat::Json).unwrap_err();
-        assert!(error.contains("17"), "{error}");
+        let result = run_syscall_diagnostic(&root, 1, 1, SyscallFormat::Json);
+        if env::var_os("RUSTYBENCH_FIXTURE_TRACE").is_some() {
+            result.unwrap();
+        } else {
+            let error = result.unwrap_err();
+            assert!(error.contains("17"), "{error}");
+        }
+    }
+
+    #[test]
+    fn syscall_collection_uses_exact_leaf_names_and_requires_marker_bounds() {
+        use std::os::unix::fs::PermissionsExt;
+        let files = temporary_baseline_files(vec![], vec![]);
+        let executable = files.directory.join("docker");
+        let log = files.directory.join("docker.log");
+        let trace = files.directory.join("trace");
+        let names = ["suite::nested::inputs::a[1]::t=1", "suite::nested::inputs::a[1]::t=2", "suite::nested::other::b(2)"];
+        let listing = names.iter().map(|name| format!("{name}: benchmark\n")).collect::<String>();
+        fs::write(&executable, format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> {log}\ncase \"$*\" in\n'build --quiet -t benchmark-syscalls:local .') exit 0;;\n*--no-run*) printf '%s\\n' '{{\"reason\":\"compiler-artifact\",\"target\":{{\"name\":\"bench\"}},\"executable\":\"/fixture\"}}';;\n*'--list --format terse') printf '%s' {listing};;\n*'--bench --exact '*) cat \"$RUSTYBENCH_FIXTURE_TRACE\";;\n*) exit 19;;\nesac\n",
+            log = shell_quote(log.to_str().unwrap()), listing = shell_quote(&listing)
+        )).unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = env::join_paths(std::iter::once(files.directory.clone())
+            .chain(env::split_paths(&env::var_os("PATH").unwrap()))).unwrap();
+        for (trace_text, expected) in [
+            ("1 prctl(PR_SET_NAME, \"BENCH_BEGIN\") = 0\n1 write(1, 0, 1) = 1\n1 prctl(PR_SET_NAME, \"BENCH_END\") = 0\n", None),
+            ("1 write(1, 0, 1) = 1\n", Some("missing-begin")),
+            ("1 prctl(PR_SET_NAME, \"BENCH_BEGIN\") = 0\n", Some("missing-end")),
+        ] {
+            fs::write(&trace, trace_text).unwrap();
+            fs::write(&log, "").unwrap();
+            let output = Command::new(env::current_exe().unwrap())
+                .args(["--exact", "tests::syscall_dispatch_probe", "--ignored", "--nocapture"])
+                .env("RUSTYBENCH_FIXTURE_ROOT", &files.directory).env("RUSTYBENCH_FIXTURE_TRACE", &trace)
+                .env("PATH", &path).output().unwrap();
+            if let Some(expected) = expected {
+                assert!(!output.status.success(), "{output:?}");
+                assert!(String::from_utf8_lossy(&output.stderr).contains(expected), "{output:?}");
+                continue;
+            }
+            assert!(output.status.success(), "{output:?}");
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            let report: SyscallReport = stdout.lines().find_map(|line| deser_json::from_str(line).ok()).unwrap();
+            assert_eq!(report.benchmarks.iter().map(|record| record.name.as_str()).collect::<Vec<_>>(), names);
+            assert!(report.benchmarks.iter().all(|record| record.calls == 1));
+            let log = fs::read_to_string(&log).unwrap();
+            for name in names {
+                assert!(log.contains(&format!("--bench --exact {} --sample-count", shell_quote(name))), "{log}");
+            }
+        }
     }
 
     #[test]

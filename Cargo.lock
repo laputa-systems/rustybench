@@ -84,7 +84,7 @@ checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
 
 [[package]]
 name = "rustybench"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "deser",
  "deser-json",
@@ -96,7 +96,7 @@ dependencies = [
 
 [[package]]
 name = "rustybench-macros"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "syn",
 ]

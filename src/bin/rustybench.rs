@@ -1311,12 +1311,14 @@ mod tests {
     fn collection_forwards_runner_flags_for_cargo_and_direct_executables() {
         use std::os::unix::fs::PermissionsExt;
         let files = temporary_baseline_files(vec![], vec![]);
-        for (program, arguments, expected) in [
+        for (index, (program, arguments, expected)) in [
             ("cargo", vec!["bench", "--bench", "bench"], "bench --bench bench -- --bench --format json --sample-count 2 --sample-size 3"),
             ("cargo", vec!["bench", "--", "needle"], "bench -- --bench --format json --sample-count 2 --sample-size 3 needle"),
             ("harness", vec!["needle"], "needle --bench --format json --sample-count 2 --sample-size 3"),
-        ] {
-            let executable = files.directory.join(program);
+        ].into_iter().enumerate() {
+            let directory = files.directory.join(index.to_string());
+            fs::create_dir(&directory).unwrap();
+            let executable = directory.join(program);
             let json = deser_json::to_string(&report(vec![benchmark("fixture", 1)])).unwrap();
             let script = format!("#!/bin/sh\n[ \"$*\" = {} ] || exit 1\nprintf '%s\\n' {}\n", shell_quote(expected), shell_quote(&json));
             fs::write(&executable, script).unwrap();

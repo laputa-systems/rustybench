@@ -47,8 +47,7 @@ pub fn split_top_level(tokens: &[TokenTree], delimiter: char) -> Vec<Vec<TokenTr
         } else if angles > 0 && closes_generic(tokens, index) {
             angles -= 1;
         } else if angles == 0 && is_punct(token, delimiter) {
-            result.push(current);
-            current = Vec::new();
+            result.push(std::mem::take(&mut current));
             continue;
         }
         current.push(token.clone());

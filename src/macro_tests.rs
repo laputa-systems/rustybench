@@ -144,12 +144,14 @@ fn generic_arg_shadow_expression<T>(value: usize) {
 }
 
 #[crate::bench(crate = crate, ignore, types = [T], args = [0u8])]
+#[allow(clippy::extra_unused_type_parameters)]
 fn generic_arg_shadow_type<T>(value: u8) {
     GENERIC_ARG_CALLS.fetch_add(1, SeqCst);
     crate::black_box(value);
 }
 
 #[crate::bench(crate = crate, ignore, types = [Vec<u8>], args = [0u8])]
+#[allow(clippy::extra_unused_type_parameters)]
 fn generic_arg_shadow_vec<Vec>(value: u8) {
     GENERIC_ARG_CALLS.fetch_add(1, SeqCst);
     crate::black_box(value);

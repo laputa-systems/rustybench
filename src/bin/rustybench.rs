@@ -1264,7 +1264,10 @@ mod tests {
         assert!(output.status.success(), "{output:?}");
         let calls = fs::read_to_string(log).unwrap();
         let lines: Vec<_> = calls.lines().collect();
-        assert_eq!(lines[0], files.directory.to_str().unwrap());
+        assert_eq!(
+            fs::canonicalize(&files.directory).unwrap(),
+            fs::canonicalize(lines[0]).unwrap(),
+        );
         assert_eq!(lines[1], "build --quiet -t benchmark-syscalls:local .");
         assert!(lines[3].starts_with("run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v "), "{calls}");
         assert!(lines[3].contains("benchmark-syscalls:local sh -lc cargo bench"), "{calls}");

@@ -1,4 +1,5 @@
 test:
+	python3 tests/bench_driver.py
 	cargo test --locked
 
 lint:
@@ -27,3 +28,14 @@ docker-bench-arm64: docker-build-arm64
 	docker run --rm -v "$(CURDIR):/workspace" -w /workspace "$(DOCKER_IMAGE)" \
 		cargo bench --bench bench -- --format json --sample-count 1 --sample-size 1
 
+BENCH_ARGS ?=
+
+.PHONY: bench bench-check bench-list
+bench:
+	python3 tools/bench.py $(BENCH_ARGS)
+
+bench-check:
+	python3 tools/bench.py --check $(BENCH_ARGS)
+
+bench-list:
+	python3 tools/bench.py --list $(BENCH_ARGS)

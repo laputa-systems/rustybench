@@ -1,9 +1,44 @@
 Prefix: DSLP
-Next: 11
+Next: 13
 
 Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/main/docs/campaigns/deslop.md), tier B). One agent works this file with the `deslop` skill: take the lowest-numbered open ticket whose area does not start with `Needs owner ·`. After DSLP-5, work the open P1 and P2 findings, then fill in `## Report` below.
 
 ## Report
+
+Bench audit (DSLP-11 and DSLP-12, P3 missing evidence): the ordinary
+`benches/bench.rs` sort, parse, event aggregation and histogram workloads
+exercise runner input, counter and thread paths on synthetic data. They
+black-box results without a correctness oracle; the collector checks report
+inventory and sample counts. The ignored empty, fixed-work, size and threaded
+controls expose calibrated operation timing, not total per-sample overhead.
+No benchmark installs the allocation profiler, so its incremental cost and
+allocation growth are unmeasured. The baseline CLI is exercised by collection,
+but startup, collection, diff and check costs are not isolated. These missing
+measurements could hide regressions; no regression was demonstrated.
+
+The three macOS ARM64 files are historical observations: before overhead work
+and current-thread ordinary workloads, and after-thread-fast-path controls.
+They use one warmup, three rounds, ten samples and one iteration, with different inventories;
+they are not interleaved, host-qualified gates or budgets. Median timing is
+per operation after calibration; allocation traffic is not retained heap.
+Raw process CPU and RSS/PSS snapshots cover the benchmark process, not its
+process tree, and baseline aggregation drops those fields. No tail latency,
+whole-tree memory, I/O or sustained throughput gate exists. Use Instruments or
+platform CPU sampling for attribution, allocator profiling for heap traffic,
+and the separate Linux `rustybench syscalls` diagnostic for syscall counts;
+profiling changes timing and must be kept separate from timed runs. Operation
+boundaries exist in the runner, but no cross-process trace is collected.
+
+The tiered driver checks tools and checkout before running;
+Cargo builds fresh artifacts. It records exclusions, commands, commit, dirty
+state and per-workload logs, but does not reserve the host, screen contention,
+verify cleanup of unrelated processes or qualify timings. No checked-in
+budget exists; `diff` is advisory and `check` accepts explicit ceilings.
+See [benchmarking](docs/benchmarking.md#rustybenchs-own-performance-workloads)
+for selection, prerequisites and limitations. Scenario and Full remain
+unqualified and Full was not run. Smallest next action: establish matched
+profiler and collector workloads with an oracle and interleaved host-qualified
+reference pairs before proposing budgets (DSLP-11, DSLP-12).
 
 Dead code (DSLP-5): on macOS ARM64 with nightly 2026-11-09, the
 workspace all-target, all-feature rustc scan found no dead-code warnings.
@@ -196,3 +231,22 @@ or performance replay for this documentary pass.
 - **Recommendation:** Emit a schema-1 object with an empty benchmarks array for an empty timed selection; exercise both empty and matching selections through the built runner.
 - **Fix with:** error-model
 - **Effort:** S
+
+### DSLP-11 · P3 · Measure harness and allocation profiler overhead
+
+- **Area:** deslop · benchmarks
+- **Where:** benches/bench.rs; docs/timing.md
+- **Problem:** The ignored controls time operations after runner calibration, not total per-sample harness cost, and the target does not install AllocProfiler. No matched profiler-on/off workload measures its cost or allocation growth; the historical macOS baselines do not supply this evidence.
+- **Recommendation:** Add a checked representative consumer and matched profiler-on/off and per-sample controls; define completed work, scope and host-qualified interleaved comparisons before setting a budget.
+- **Fix with:** refactor-benchmarks
+- **Effort:** M
+
+
+### DSLP-12 · P3 · Qualify collector and baseline performance evidence
+
+- **Area:** deslop · benchmarks
+- **Where:** benches/bench.rs; src/bin/rustybench.rs; docs/reports.md
+- **Problem:** Baseline collection records wall time but the existing target does not isolate CLI startup, collection, comparison or process-tree resource cost. Three historical macOS files use different inventories and are not interleaved or qualified as budgets; raw process resources are not retained in baselines.
+- **Recommendation:** Add a checked realistic report corpus and separate collector, diff and check workloads; measure process-tree resources and interleaved reference pairs with a host gate and attribution tools before proposing limits.
+- **Fix with:** refactor-benchmarks
+- **Effort:** M

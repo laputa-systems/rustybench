@@ -5,6 +5,16 @@ Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/mai
 
 ## Report
 
+Tests (DSLP-4): the critical contracts map to existing tests, recorded in
+[docs/deslop-tests.md](docs/deslop-tests.md). The bounded cargo-mutants
+median trial (about four runner-minutes) found two survivors in median
+selection; the strengthened allocation-median test catches both. New collector
+cases check the human report columns and the `check` budget verdict and `diff`
+percentage; injected faults in the budget comparison, median selection and
+sample column each fail them. `make coverage` reports 83.57% lines and 75.28%
+branches. A retained mutation lane is required only where the tools are
+mirrored; cargo-mutants is not on the crate mirror.
+
 Ground at `e01963bcbcb2db3c34a91baba0544dce25c5b4a0` used macOS ARM64
 and pinned nightly 2026-11-09. The scoped fleet rule accepted
 the existing Make test entry. Both hosted default checks passed.
@@ -140,14 +150,6 @@ or performance replay for this documentary pass.
 
 
 
-### DSLP-4 · P2 · Tests: coverage, boundary gaps, mutation
-
-- **Area:** deslop · tests
-- **Where:** test suites and CI
-- **Problem:** Coverage and mutation results are unmeasured; no deslop mutation lane exists.
-- **Recommendation:** Run the deslop Tests step. Accept: no undispositioned survivor in critical code, the test cost budget holds, and the lane is green where the tools are mirrored.
-- **Fix with:** deslop
-- **Effort:** M
 
 ### DSLP-5 · P2 · Dead code: tools and debloat
 

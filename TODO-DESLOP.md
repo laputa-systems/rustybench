@@ -66,6 +66,14 @@ before `sample_count` made `cargo check` fail with E0560. The two
 fixtures are the control and reproduction for DSLP-9. The remaining
 library and macro review stays in DSLP-2.
 
+
+The DSLP-9 candidate uses the existing Rust parser for expression
+and type boundaries and retains the original tokens for macro
+generation. The targeted registration test passed for both
+option orders and for a benchmark group. Reproduce with
+`cargo test --offline --locked --lib comparisons_and_following_options_register_independently`.
+At `bc6748c`, `make test` (84 library tests and doctests) and `make lint` passed on macOS ARM64. Reverting only `macros/src/attr_options.rs` and the manifest reproduces `expected :, found =` for both option orders and the group. With the requirement raised to 0.6 and both crates patched to the candidate, `cargo check --benches --workspace` passed for fastermod, loc, e, ish and gluon, identically to current main; the logs show the candidate macro crate loaded.
+
 ## Tickets
 
 
@@ -105,14 +113,6 @@ library and macro review stays in DSLP-2.
 - **Fix with:** deslop
 - **Effort:** M
 
-### DSLP-9 · P2 · Keep comparisons inside benchmark attribute expressions
-
-- **Area:** deslop · macro parsing
-- **Where:** macros/src/attr_options.rs, AttrOptions::parse; macros/src/tokens.rs, split_top_level
-- **Problem:** A downstream crate on locked 6f5e939 compiled #[rustybench::bench(sample_count = 1, name = if LOWER < UPPER { "lower" } else { "upper" })] with u8 constants LOWER = 1 and UPPER = 2. Swapping just those two options failed cargo check with expected colon and E0560. The angle tracker treats a less-than expression as a generic opener and consumes the delimiter before the next option.
-- **Recommendation:** Use Rust expression parsing at option boundaries while preserving the supported types syntax. Keep compile and registration tests for both option orders and generic expressions containing commas.
-- **Fix with:** make-invalid-states-unrepresentable
-- **Effort:** M
 
 
 ### DSLP-7 · P3 · Reject malformed UTF-8 in benchmark reports

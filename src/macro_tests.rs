@@ -61,6 +61,32 @@ fn raw_ident() {}
 #[crate::bench(crate = crate, name = "raw name ident", ignore)]
 fn raw_name_ident() {}
 
+const LOWER: u8 = 1;
+const UPPER: u8 = 2;
+
+#[crate::bench(crate = crate, name = if LOWER < UPPER { "lower" } else { "upper" }, sample_count = 3, ignore)]
+fn comparison_before_sample_count() {}
+
+#[crate::bench(crate = crate, ignore, sample_count = 3, name = if LOWER < UPPER { "lower" } else { "upper" })]
+fn comparison_after_sample_count() {}
+
+#[crate::bench_group(crate = crate, name = if LOWER < UPPER { "lower_group" } else { "upper_group" }, sample_count = 4, ignore)]
+mod comparison_group {}
+
+#[test]
+fn comparisons_and_following_options_register_independently() {
+    for raw in ["comparison_before_sample_count", "comparison_after_sample_count"] {
+        let meta = &find_bench(raw).meta;
+        assert_eq!(meta.display_name, "lower");
+        assert_eq!(meta.bench_options.as_ref().unwrap().sample_count, Some(3));
+        assert!(ignored(meta));
+    }
+    let meta = &find_group("comparison_group").meta;
+    assert_eq!(meta.display_name, "lower_group");
+    assert_eq!(meta.bench_options.as_ref().unwrap().sample_count, Some(4));
+    assert!(ignored(meta));
+}
+
 #[crate::bench_group(crate = crate, ignore)]
 mod metadata_group {
     #[crate::bench(crate = crate, ignore)]

@@ -1312,7 +1312,7 @@ mod tests {
 
     #[test]
     fn collection_forwards_runner_flags_for_cargo_and_direct_executables() {
-        use std::os::unix::fs::PermissionsExt;
+        let runner = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/check-runner-args.sh");
         let files = temporary_baseline_files(vec![], vec![]);
         for (index, (program, arguments, expected)) in [
             ("cargo", vec!["bench", "--bench", "bench"], "bench --bench bench -- --bench --format json --sample-count 2 --sample-size 3"),
@@ -1323,9 +1323,9 @@ mod tests {
             fs::create_dir(&directory).unwrap();
             let executable = directory.join(program);
             let json = deser_json::to_string(&report(vec![benchmark("fixture", 1)])).unwrap();
-            let script = format!("#!/bin/sh\n[ \"$*\" = {} ] || exit 1\nprintf '%s\\n' {}\n", shell_quote(expected), shell_quote(&json));
-            fs::write(&executable, script).unwrap();
-            fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+            fs::write(directory.join("arguments"), format!("{expected}\n")).unwrap();
+            fs::write(directory.join("report.json"), format!("{json}\n")).unwrap();
+            std::os::unix::fs::symlink(&runner, &executable).unwrap();
             let command: Vec<OsString> = std::iter::once(executable.into_os_string())
                 .chain(arguments.into_iter().map(OsString::from)).collect();
             let report = run_benchmark(&files.directory, &command, Some(2), Some(3)).unwrap();

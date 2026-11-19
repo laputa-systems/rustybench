@@ -543,12 +543,12 @@ fn alloc_median_follows_allocation_order_not_time_order() {
         NonZeroUsize::new(1).unwrap(),
     ).unwrap();
 
-    bench_context.samples.sample_size = 1;
+    bench_context.samples.sample_size = 2;
 
     let synthetic: [(u128, u64, u64); 3] = [
-        (100, 1000, 1000),
-        (200, 5, 5),
-        (300, 10, 10),
+        (600, 10, 10),
+        (200, 1000, 1000),
+        (400, 5, 5),
     ];
 
     for (index, &(duration_picos, max_count, max_size)) in synthetic.iter().enumerate() {
@@ -582,10 +582,17 @@ fn alloc_median_follows_allocation_order_not_time_order() {
     let stats = bench_context.compute_stats().unwrap();
     let record = crate::report::BenchmarkRecord::from_stats("synthetic", &stats);
 
-    assert_eq!(record.alloc_count, 10);
-    assert_eq!(record.alloc_bytes, 10);
+    assert_eq!(stats.time.fastest.picos, 100);
+    assert_eq!(stats.time.median.picos, 200);
+    assert_eq!(stats.time.slowest.picos, 300);
+    assert_eq!(record.alloc_count, 5);
+    assert_eq!(record.alloc_bytes, 5);
     assert_eq!(record.max_alloc_count, 10);
     assert_eq!(record.max_alloc_bytes, 10);
+
+    bench_context.samples.time_samples.push(TimeSample { duration: FineDuration { picos: 800 } });
+    let stats = bench_context.compute_stats().unwrap();
+    assert_eq!(stats.time.median.picos, 250);
 }
 
 #[test]

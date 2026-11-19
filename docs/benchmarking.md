@@ -62,3 +62,46 @@ allocator and profiler settings the same when comparing runs. Allocations from
 unrelated threads are not a portable part of the results.
 
 Read [timing](timing.md) for sampling, calibration, and deferred-drop details.
+
+## Rustybench's own performance workloads
+
+From the repository root, `make bench-list` lists the workloads and commands;
+`make bench-check BENCH_ARGS='--tier Change --name runner'` checks prerequisites
+without running them. `make bench` defaults to Edit. For example:
+
+```sh
+make bench BENCH_ARGS='--tier Change --name runner --dry-run'
+make bench BENCH_ARGS='--tier Change --name runner'
+make bench BENCH_ARGS='--tier Scenario --area runner --skip runner'
+```
+
+`--tier Edit|Change|Scenario|Full` sets a ceiling; Full is manual-only and
+requires an explicit `--tier Full`. Repeat `--name`, `--area`, or `--skip` to
+select workload names, areas, or excluded workload names. Name and area
+filters intersect. Unknown selectors and empty selections fail. A dry run
+prints commands and exclusions without preflight or writes. Preflight checks
+Cargo, rustc and Git versions, platform, required checkout files,
+and free disk before any workload starts. Cargo rebuilds stale artifacts; no
+external fixtures or services are used. Host load and isolation are not checked.
+Python 3, Git, the pinned Rust toolchain and at least 1 GiB free are required.
+Rustup toolchain overrides must be cleared to use the checkout pin.
+
+| Name | Tier / area | Purpose | Estimated cost, warm build |
+| --- | --- | --- | --- |
+| `accounting` | Edit / accounting | Allocation median correctness test | seconds |
+| `runner` | Change / runner | Collect one sort benchmark through the CLI | minutes |
+| `overhead` | Scenario / runner | Collect ignored harness controls, three measured rounds | minutes |
+| `suite` | Full / runner | Collect all ordinary representative workloads, three measured rounds | minutes |
+
+Runs create `.work/bench/<date>/summary.txt` and a directory per workload
+with `run.log` and, for collection, `baseline.json`. The summary records
+exclusions, exit codes, commands, duration, commit and dirty state. A failed
+workload fails the run. Timing is unqualified: samples are not screened for
+host contention, and completion does not establish a performance verdict.
+The collector verifies report inventories and nonzero samples, but the
+representative workload results have no correctness oracle. For comparisons,
+use `cargo run --bin rustybench -- diff BASELINE CANDIDATE` or `check BUDGET
+CANDIDATE`; choose matching workloads and qualified hosts. `check` applies
+absolute ceilings, and historical baseline observations are not budgets.
+The checked-in macOS baselines are preserved; they have different inventories
+and should not be treated as interchangeable references.

@@ -1,5 +1,5 @@
 Prefix: DSLP
-Next: 9
+Next: 10
 
 Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/main/docs/campaigns/deslop.md), tier B). One agent works this file with the `deslop` skill: take the lowest-numbered open ticket whose area does not start with `Needs owner ·`. After DSLP-5, work the open P1 and P2 findings, then fill in `## Report` below.
 
@@ -56,7 +56,15 @@ Both runs exited zero. The second replaced the file with a row named
 U+FFFD. A separate shell entered and removed its own empty scratch
 directory, then ran the absolute binary with `baseline --print-path`.
 It exited 101 from a current-directory panic. DSLP-7 and DSLP-8
-retain these cases. The library and macro review remains in DSLP-2.
+retain these cases.
+
+A path-dependency fixture on the same revision compiled a benchmark
+attribute with `sample_count = 1` before
+`name = if LOWER < UPPER { "lower" } else { "upper" }`, using
+constant `u8` values 1 and 2. Moving the same `name` expression
+before `sample_count` made `cargo check` fail with E0560. The two
+fixtures are the control and reproduction for DSLP-9. The remaining
+library and macro review stays in DSLP-2.
 
 ## Tickets
 
@@ -97,6 +105,16 @@ retain these cases. The library and macro review remains in DSLP-2.
 - **Fix with:** deslop
 - **Effort:** M
 
+### DSLP-9 · P2 · Keep comparisons inside benchmark attribute expressions
+
+- **Area:** deslop · macro parsing
+- **Where:** macros/src/attr_options.rs, AttrOptions::parse; macros/src/tokens.rs, split_top_level
+- **Problem:** A downstream crate on locked 6f5e939 compiled #[rustybench::bench(sample_count = 1, name = if LOWER < UPPER { "lower" } else { "upper" })] with u8 constants LOWER = 1 and UPPER = 2. Swapping just those two options failed cargo check with expected colon and E0560. The angle tracker treats a less-than expression as a generic opener and consumes the delimiter before the next option.
+- **Recommendation:** Use Rust expression parsing at option boundaries while preserving the supported types syntax. Keep compile and registration tests for both option orders and generic expressions containing commas.
+- **Fix with:** make-invalid-states-unrepresentable
+- **Effort:** M
+
+
 ### DSLP-7 · P3 · Reject malformed UTF-8 in benchmark reports
 
 - **Area:** deslop · collector
@@ -105,7 +123,6 @@ retain these cases. The library and macro review remains in DSLP-2.
 - **Recommendation:** Validate encoding on report lines before JSON decoding. Exercise a valid non-ASCII identity and a malformed child report and verify the second run preserves the prior baseline byte for byte.
 - **Fix with:** error-model
 - **Effort:** S
-
 
 ### DSLP-8 · P3 · Return a diagnostic when the current directory disappears
 

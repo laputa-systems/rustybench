@@ -82,18 +82,63 @@ and DSLP-8; the option-order failure was repaired in #22. Linux runtime,
 downstream consumers, exhaustive unsafe soundness and performance gates
 were not exercised in this review.
 
+The DSLP-3 Types pass used macOS ARM64 and pinned nightly 2026-11-09,
+base `15c7d9a52749035e45403b4facbd38f5efffc532`. Each candidate was
+measured separately with `cargo clippy --workspace --all-targets
+--all-features --locked -- -W <lint>`; all exited 0. Counts below are
+unique emitted diagnostics, excluding Cargo summary lines and duplicate
+builds. Tests and benches are included where compiled. Linux-only code was
+not linted on this host.
+
+| Candidate | Findings | Decision and reason |
+| --- | ---: | --- |
+| `unsafe_code` | 112 (102 library, 10 test-only) | Reject: registration, allocation and platform interfaces use unsafe; forbid would reject necessary code. |
+| `clippy::wildcard_enum_match_arm` | 14 | Reject: fallback handling includes `Ordering`, token classification and CLI arguments; no demonstrated defect. |
+| `clippy::match_wildcard_for_single_variants` | 1 | Reject: existing fallback in `src/entry/mod.rs`; no demonstrated defect. |
+| `clippy::cast_possible_truncation` | 14 (8 library, 5 test-only, 1 bench) | Reject: bounded averages, saturated report conversion and deliberate benchmark truncation produce false positives; sample-index limits remain a lead, not a demonstrated defect. |
+| `clippy::cast_sign_loss` | 4 | Reject: signed allocation maxima start at zero and remain nonnegative; report conversion is guarded and absolute difference deliberately preserves the unsigned magnitude. |
+| `clippy::unwrap_used` | 174 (14 production, 160 tests/bench) | Reject: macro parser invariants, thread and sampling assumptions yield false positives; no qualifying defect was established. |
+| `clippy::expect_used` | 6 (5 production, 1 test) | Reject: serialization and thread invariants yield false positives; the current-directory errors are already tracked as DSLP-8. |
+| `clippy::redundant_clone` | 1 (test) | Reject: no production escape hatch or type defect. |
+| `clippy::needless_pass_by_value` | 5 | Reject: ownership choices are not type defects or escape hatches. |
+
+False-positive classification is conservative: unsafe has at least four
+necessary sites; wildcard enum has at least four intentional fallbacks;
+truncation has at least four bounded or deliberate conversions; sign loss has
+four guarded or intentional conversions. The single-variant wildcard has one
+intentional fallback. `unwrap_used` has at least four invariant-based sites;
+`expect_used` has at least three invariant or serialization sites and two
+sites already tracked as DSLP-8. The remaining diagnostics were not all
+classified individually. The clone and pass-by-value diagnostics identify
+ownership choices rather than typing defects (one and five respectively).
+There are 15,821 tracked Rust lines; at least four false positives exceed the
+one-per-5,000-line limit. No other candidate demonstrated a qualifying fix.
+
+No new strict setting was adopted; the existing `make lint` profile passed.
+Source was unchanged, so no contract was fixed and no new witness is claimed.
+The producer and callers of report parsing, command selection, argument type
+erasure and generic macro generation were inspected. Ranked remaining leads:
+(1) sample counts and indices use `usize` to `u32` conversions; establishing
+an executable overflow case requires a separate runtime and resource analysis;
+(2) macro generic names and types are correlated optional fields after syntax
+parsing and validated option selection; a type rewrite needs a negative witness
+and must preserve accepted syntax; (3) the allocation initializer's unwrap
+follows initialization and could be replaced without changing its contract.
+DSLP-7, DSLP-8 and DSLP-10 remain open.
+
+`python3 tools/deslop-type-count.py` counted before and after: 89 unsafe
+blocks, 14 allow attributes, 21 non-test unwrap/expect calls and 157 `as`
+cast-like expressions. This lexical inventory strips comments and string
+literals, counts all first-party Rust targets including conditional platform
+code, excludes test modules only for unwrap/expect, and excludes imports from
+`as` counts. Generated Rust inside strings is outside the inventory. No hatch
+count increased. The unchanged runtime and public contracts need no consumer
+or performance replay for this documentary pass.
+
 ## Tickets
 
 
 
-### DSLP-3 · P2 · Types: strict profile and typing findings
-
-- **Area:** deslop · types
-- **Where:** type checker and lint configuration; Rust sources
-- **Problem:** The strict-profile candidates in the deslop skill's tools reference have not been measured here.
-- **Recommendation:** Run the deslop Types step. Accept: clean at the adopted profile, escape hatches not increased, witnesses recorded.
-- **Fix with:** deslop
-- **Effort:** M
 
 ### DSLP-4 · P2 · Tests: coverage, boundary gaps, mutation
 

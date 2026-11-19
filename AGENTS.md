@@ -27,16 +27,28 @@ Rust benchmark runner for macOS and Linux.
 
 ## Verification
 
+- Edit: `cargo test --lib alloc_median_follows_allocation_order_not_time_order`;
+  Change: `cargo test --test collector`; Full (manual): `make test`.
+  Before edits: 102 library tests 0.81 s, 32 tool tests 0.68 s, one collector,
+  84 doctests 17.08 s; full cold build and test 139.04 s under shared load.
+- Baseline rejection and preservation: `collection_rejects_ambiguous_or_invalid_reports_without_replacing_baseline`
+  and `collection_preserves_an_existing_baseline_with_duplicate_names`;
+  duplicate comparisons: `comparison_rejects_duplicate_names_in_both_file_roles`.
+- Budget ceilings: `check_accepts_candidate_within_all_budget_limits` and the
+  metric regression tests. Advisory diff and CLI exit codes: `tests/collector.rs`.
+  Comparison text and spread: `comparison_reports_added_removed_and_unstable_benchmarks`
+  and `spread_format_distinguishes_stable_and_unstable_runs`.
+- JSON schema: `json_round_trip_preserves_report_contract` and compatibility
+  tests. Human report headers and sample counts: `tests/collector.rs`.
+- Sample median and extrema, allocation accounting: `alloc_median_follows_allocation_order_not_time_order`
+  and `max_alloc_bytes_stays_the_sample_peak`. Macro options: `attribute_options_inherit_and_override`,
+  `comparisons_and_following_options_register_independently`, and compile-fail doctests.
 - `make test` and `make lint` passed on macOS ARM64 with pinned
   nightly 2026-11-09. The empty-target test took 191.75 s and the
   warm repeat took 18.46 s. Clippy took 123.13 s. These observations
   include shared host load. CI runs `make test` on Linux ARM64 and macOS.
-- Macro and compile-fail tests cover registration. Library and collector
-  tests cover counters, allocation, builder options and runner execution.
-- CLI and collector tests cover option handling, selected exits, and the
-  JSON report and baseline contracts. Full installed help and Docker
-  strace execution await separate qualification.
-- The fleet lists 17 direct development consumers in the owning report.
-  Check affected consumers when the public API changes.
-- `benches/bench.rs` exercises representative runner behavior. The
-  workload needs qualification before use as a runtime performance gate.
+- Full installed help and Docker strace execution await separate qualification.
+- `make coverage` reports 83.57% lines and 75.28% branches after this audit;
+  coverage is informational. Mutation and fault evidence: `docs/deslop-tests.md`.
+- The fleet lists 17 direct development consumers; check them on public API changes.
+- `benches/bench.rs` exercises runner behavior; it needs performance-gate qualification.

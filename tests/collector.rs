@@ -90,12 +90,36 @@ fn main() {
         assert_eq!(report.benchmarks[0].name, name);
     }
 
+    let human = success(Command::new(&executable).env("RUSTYBENCH_FIXTURE_CHILD", "1")
+        .args(["--bench", "--format", "human", "--sample-count", "2", "--sample-size", "3", "--exact", "collector::stable"]).output().unwrap());
+    let human = String::from_utf8(human).unwrap();
+    let header = human.lines().find(|line| line.contains("fastest") && line.contains("median")).unwrap();
+    assert!(header.contains("slowest") && header.contains("mean") && header.contains("samples") && header.contains("iters"), "{human}");
+    let row = human.lines().find(|line| line.contains("stable")).unwrap();
+    let columns: Vec<_> = row.split('│').map(str::trim).collect();
+    assert_eq!(columns.len(), 6, "{human}");
+    assert_eq!(&columns[4..], &["2", "6"], "{human}");
+
     let script = format!("{exe} --bench --format json --sample-count 1 --sample-size 1 'colliding' && {exe} --bench --format json --sample-count 1 --sample-size 1 'stable$'", exe = quote(executable.to_str().unwrap()));
     success(collect().args(["sh", "-c", &script, "producer"]).output().unwrap());
     let file: Baseline = deser_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(file.benchmarks.len(), 3);
 
     let previous = fs::read(&path).unwrap();
+    let budget = scratch.0.join("budget.json");
+    fs::write(&budget, br#"{"schema":1,"host":"h","platform":"p","arch":"a","mode":"m","warmup_runs":0,"measured_runs":1,"wall_ns":1,"warmup_wall_ns":0,"measured_wall_ns":1,"suite_wall_ns":[1],"benchmarks":[{"name":"x","median_ns":10,"alloc_count":1,"alloc_bytes":2,"max_alloc_count":1,"max_alloc_bytes":2}]}"#).unwrap();
+    let candidate = scratch.0.join("candidate.json");
+    fs::write(&candidate, fs::read(&budget).unwrap()).unwrap();
+    let tool = env!("CARGO_BIN_EXE_rustybench");
+    success(Command::new(tool).arg("check").arg(&budget).arg(&candidate).output().unwrap());
+    let over = String::from_utf8(fs::read(&candidate).unwrap()).unwrap().replace("\"median_ns\":10", "\"median_ns\":11");
+    fs::write(&candidate, over).unwrap();
+    let output = Command::new(tool).arg("check").arg(&budget).arg(&candidate).output().unwrap();
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("median_ns is 11, exceeding budget 10"), "{output:?}");
+    let output = Command::new(tool).arg("diff").arg(&budget).arg(&candidate).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stdout).contains("+10.00%"), "{output:?}");
     let output = collect().arg(&executable).env("RUSTYBENCH_FIXTURE_OMIT", "1").output().unwrap();
     assert_eq!(output.status.code(), Some(2), "{output:?}");
     assert!(String::from_utf8_lossy(&output.stderr).contains("no benchmark function registered"));

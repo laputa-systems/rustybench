@@ -4,7 +4,10 @@ test:
 lint:
 	cargo clippy --all-targets --all-features -- --deny warnings
 
-.PHONY: test lint publish
+coverage:
+	cargo llvm-cov --branch --summary-only --locked
+
+.PHONY: test lint coverage publish
 
 publish:
 	./tools/bump_minor_release.sh

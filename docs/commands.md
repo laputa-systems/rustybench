@@ -59,9 +59,10 @@ adjust collection. `--quiet` hides the comparison table. `--print-path` prints
 the selected path and exits. `--fast` runs once with no warmup, one sample, and
 one iteration per sample.
 
-`diff` prints a comparison between two baseline files. `check` treats the first
-file as a set of absolute metric ceilings and requires both files to contain
-exactly the same benchmark names.
+`diff` prints a comparison between two baseline files and shows names that
+were added or removed. `check` treats the first file as a set of absolute
+metric ceilings and requires the same names in both files. Both commands
+require unique benchmark names within each file.
 
 Collection combines every schema-1 report emitted by a command, including
 reports from multiple benchmark targets. Duplicate benchmark names and invalid
@@ -69,8 +70,9 @@ reports fail collection before replacing the baseline.
 
 Every measured command must report the same benchmark inventory exactly once,
 with nonzero samples and iterations for each entry. Missing or added entries
-fail collection without replacing the baseline. Child diagnostics are relayed
-to stderr.
+fail collection without replacing the baseline. An existing baseline must
+also contain unique names, including in `--quiet` mode. Child diagnostics
+are relayed to stderr.
 
 Commands beginning with `cargo` use Cargo's `--` separator for runner flags.
 For a prebuilt benchmark executable or another producer command, runner flags

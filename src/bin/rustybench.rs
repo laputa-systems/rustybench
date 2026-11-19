@@ -264,8 +264,10 @@ fn baseline(arguments: Vec<OsString>) -> Result<(), String> {
     } else {
         Vec::new()
     };
-    if !options.quiet {
-        print_comparison(&previous, &current, path.display());
+    if options.quiet {
+        benchmark_index(&previous, "baseline")?;
+    } else {
+        print_comparison(&previous, &current, path.display())?;
     }
 
     let (host, platform, arch) = host_info();
@@ -512,8 +514,7 @@ fn diff(arguments: Vec<OsString>) -> Result<(), String> {
         &baseline,
         &candidate,
         format!("{} → {}", paths[0].display(), paths[1].display()),
-    );
-    Ok(())
+    )
 }
 
 /// `check BUDGET CANDIDATE` uses schema-1 records as absolute ceilings and requires
@@ -679,11 +680,12 @@ fn print_comparison(
     previous: &[BaselineRecord],
     current: &[BaselineRecord],
     title: impl std::fmt::Display,
-) {
+) -> Result<(), String> {
     print!(
         "{}",
-        render_comparison(previous, current, title, comparison_width())
+        render_comparison(previous, current, title, comparison_width())?
     );
+    Ok(())
 }
 
 fn comparison_width() -> usize {
@@ -699,8 +701,10 @@ fn render_comparison(
     current: &[BaselineRecord],
     title: impl std::fmt::Display,
     width: usize,
-) -> String {
+) -> Result<String, String> {
     const SEPARATORS: usize = 3;
+    let previous = benchmark_index(previous, "baseline")?;
+    let current = benchmark_index(current, "candidate")?;
     let metric_width = if width >= 100 {
         32
     } else if width >= 60 {
@@ -710,18 +714,10 @@ fn render_comparison(
     };
     let name_width = width.saturating_sub(metric_width * 3 + SEPARATORS).max(8);
     let line_width = name_width + metric_width * 3 + SEPARATORS;
-    let previous: FxHashMap<_, _> = previous
-        .iter()
-        .map(|record| (&record.name, record))
-        .collect();
-    let current: FxHashMap<_, _> = current
-        .iter()
-        .map(|record| (&record.name, record))
-        .collect();
     let mut names = previous
         .keys()
         .chain(current.keys())
-        .map(|name| (*name).clone())
+        .copied()
         .collect::<Vec<_>>();
     // Hash iteration order is unspecified; the comparison lists names sorted.
     names.sort_unstable();
@@ -736,7 +732,7 @@ fn render_comparison(
     output.push_str(&format!("{}\n", "-".repeat(line_width)));
 
     for name in names {
-        let (time, memory, allocs) = match (previous.get(&name), current.get(&name)) {
+        let (time, memory, allocs) = match (previous.get(name), current.get(name)) {
             (Some(previous), Some(current)) => (
                 format_metric_with_spread(
                     current.median_ns,
@@ -764,13 +760,13 @@ fn render_comparison(
         };
         output.push_str(&format!(
             "{:<name_width$} {:>metric_width$} {:>metric_width$} {:>metric_width$}\n",
-            truncate_cell(&name, name_width),
+            truncate_cell(name, name_width),
             truncate_cell(&time, metric_width),
             truncate_cell(&memory, metric_width),
             truncate_cell(&allocs, metric_width),
         ));
     }
-    output
+    Ok(output)
 }
 
 fn truncate_cell(value: &str, width: usize) -> String {
@@ -1542,6 +1538,35 @@ mod tests {
     }
 
     #[test]
+    fn comparison_rejects_duplicate_names_in_both_file_roles() {
+        let record = budget_record();
+        let other = BaselineRecord { median_ns: 200, ..record.clone() };
+        for (file_kind, baseline, candidate) in [
+            ("baseline", vec![record.clone(), other.clone()], vec![record.clone()]),
+            ("candidate", vec![record.clone()], vec![record.clone(), other]),
+        ] {
+            let files = temporary_baseline_files(baseline, candidate);
+            let error = diff(vec![
+                files.budget.as_os_str().to_owned(),
+                files.candidate.as_os_str().to_owned(),
+            ])
+            .unwrap_err();
+            assert_eq!(error, format!("{file_kind} contains duplicate benchmark `{}`", record.name));
+        }
+    }
+
+    #[test]
+    fn collection_preserves_an_existing_baseline_with_duplicate_names() {
+        let record = budget_record();
+        let files = temporary_baseline_files(vec![], vec![record.clone(), record.clone()]);
+        let previous = fs::read(&files.candidate).unwrap();
+        let report = report(vec![benchmark(&record.name, 150)]);
+        let error = collect_to(&files, report_producer(&[report]), 1).unwrap_err();
+        assert_eq!(error, format!("baseline contains duplicate benchmark `{}`", record.name));
+        assert_eq!(fs::read(&files.candidate).unwrap(), previous);
+    }
+
+    #[test]
     fn check_rejects_duplicate_benchmark_names() {
         let record = budget_record();
         for (file_kind, budget, candidate) in [
@@ -1695,7 +1720,7 @@ mod tests {
             run_median_ns: Some(vec![10, 20]),
         }];
 
-        let output = render_comparison(&previous, &current, "comparison", 120);
+        let output = render_comparison(&previous, &current, "comparison", 120).unwrap();
         assert!(output.contains("added"));
         assert!(output.contains("removed"));
         assert!(output.contains("10 ns–20 ns"));
@@ -1713,12 +1738,12 @@ mod tests {
             run_median_ns: Some(vec![10, 20]),
         }];
 
-        let output = render_comparison(&[], &current, "comparison", 60);
+        let output = render_comparison(&[], &current, "comparison", 60).unwrap();
         for line in output.lines().skip(1) {
             assert!(line.chars().count() <= 60, "line is too wide: {line:?}");
         }
 
-        let output = render_comparison(&[], &current, "comparison", 48);
+        let output = render_comparison(&[], &current, "comparison", 48).unwrap();
         for line in output.lines().skip(1) {
             assert!(line.chars().count() <= 48, "line is too wide: {line:?}");
         }

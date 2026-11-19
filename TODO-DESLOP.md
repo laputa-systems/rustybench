@@ -36,6 +36,13 @@ values are fabricated inputs to test presentation. README examples and
 the development toolchain documentation now match the checked pin.
 The remaining library, macro and collector review stays in DSLP-2.
 
+The DSLP-6 repair uses the existing unique-name index for both
+comparison inputs. With the built candidate, `diff` rejected duplicate
+baseline and candidate rows before stdout. Both normal and quiet
+collection preserved the previous file byte for byte on rejection.
+Added and removed names still appeared in a valid comparison. The
+CLI suite passed 32 tests with one existing ignore.
+
 ## Tickets
 
 
@@ -74,14 +81,3 @@ The remaining library, macro and collector review stays in DSLP-2.
 - **Recommendation:** Run the deslop Dead code step. Accept: tools clean or allowlisted with reasons; walk-backs filed as Needs owner tickets.
 - **Fix with:** deslop
 - **Effort:** M
-
-
-### DSLP-6 · P2 · Reject duplicate names before displaying baseline comparisons
-
-- **Area:** Baseline comparison
-- **Where:** src/bin/rustybench.rs:497-518, 615-643, 697-723
-- **Problem:** The built diff command accepted two records named fixture with median_ns values 10 and 30, then displayed either a 33.33 percent decrease or a 100 percent increase against a candidate at 20, depending only on row order. The same input was rejected by check. See Report for the fixture.
-- **Recommendation:** Validate the unique-name invariant before displaying a diff and before comparing with a previous baseline. Reuse the existing duplicate diagnostic path. Test duplicate names in both input roles, preserve missing and added benchmark comparisons, and verify malformed existing baselines survive a failed collection.
-- **Fix with:** durable-state
-- **Effort:** M
-

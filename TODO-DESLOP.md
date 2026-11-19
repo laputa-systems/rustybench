@@ -1,5 +1,5 @@
 Prefix: DSLP
-Next: 10
+Next: 11
 
 Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/main/docs/campaigns/deslop.md), tier B). One agent works this file with the `deslop` skill: take the lowest-numbered open ticket whose area does not start with `Needs owner ·`. After DSLP-5, work the open P1 and P2 findings, then fill in `## Report` below.
 
@@ -34,7 +34,7 @@ DSLP-6. Reversing the duplicate rows made `diff` change from `-33.33%`
 to `+100.00%`. `check` rejected the same duplicate inventory. These
 values are fabricated inputs to test presentation. README examples and
 the development toolchain documentation now match the checked pin.
-The remaining library, macro and collector review stays in DSLP-2.
+The library and macro review is recorded below.
 
 The DSLP-6 repair uses the existing unique-name index for both
 comparison inputs. With the built candidate, `diff` rejected duplicate
@@ -63,8 +63,7 @@ attribute with `sample_count = 1` before
 `name = if LOWER < UPPER { "lower" } else { "upper" }`, using
 constant `u8` values 1 and 2. Moving the same `name` expression
 before `sample_count` made `cargo check` fail with E0560. The two
-fixtures are the control and reproduction for DSLP-9. The remaining
-library and macro review stays in DSLP-2.
+fixtures are the control and reproduction for DSLP-9. The library and macro review is recorded below.
 
 
 The DSLP-9 candidate uses the existing Rust parser for expression
@@ -74,17 +73,18 @@ option orders and for a benchmark group. Reproduce with
 `cargo test --offline --locked --lib comparisons_and_following_options_register_independently`.
 At `bc6748c`, `make test` (84 library tests and doctests) and `make lint` passed on macOS ARM64. Reverting only `macros/src/attr_options.rs` and the manifest reproduces `expected :, found =` for both option orders and the group. With the requirement raised to 0.6 and both crates patched to the candidate, `cargo check --benches --workspace` passed for fastermod, loc, e, ish and gluon, identically to current main; the logs show the candidate macro crate loaded.
 
+Diagnose reviewed library registration and filtering, benchmark sampling,
+counters, allocation, reporting, timing and worker lifecycles, and macro
+option parsing and generic expansion. A built runner reproduced DSLP-10:
+a nonmatching JSON selection exited 0 without a report, while a matching
+selection emitted schema 1. The earlier collector findings remain DSLP-7
+and DSLP-8; the option-order failure was repaired in #22. Linux runtime,
+downstream consumers, exhaustive unsafe soundness and performance gates
+were not exercised in this review.
+
 ## Tickets
 
 
-### DSLP-2 · P2 · Diagnose: ultrareview into this backlog
-
-- **Area:** deslop · diagnose
-- **Where:** whole repository
-- **Problem:** No review has ranked this repository's risks for the deslop pass.
-- **Recommendation:** Run the deslop Diagnose step. Accept: the diff touches only docs, comments, and this file, and every finding names its Fix with.
-- **Fix with:** deslop
-- **Effort:** S
 
 ### DSLP-3 · P2 · Types: strict profile and typing findings
 
@@ -130,5 +130,14 @@ At `bc6748c`, `make test` (84 library tests and doctests) and `make lint` passed
 - **Where:** src/bin/rustybench.rs, baseline and syscalls root resolution
 - **Problem:** On locked 6f5e939, a shell entered its own empty scratch directory, removed it with rmdir, then execed the absolute rustybench binary with baseline --print-path. The command panicked and exited 101. The syscalls command uses the same unchecked current directory lookup.
 - **Recommendation:** Report the current-directory error through the existing CLI result path for commands with no explicit root. Replay the removed-directory case in an isolated subprocess.
+- **Fix with:** error-model
+- **Effort:** S
+
+### DSLP-10 · P3 · Emit a JSON report for an empty selection
+
+- **Area:** deslop · runner
+- **Where:** src/rustybench.rs:114; docs/reports.md:5
+- **Problem:** On 6bc9d297, the built collector fixture run with RUSTYBENCH_FIXTURE_CHILD=1 and --bench --format json definitely_no_matching_benchmark exits 0 with zero stdout bytes. With --exact collector::stable and the same JSON format it emits a schema-1 object. The early return for an empty filtered tree bypasses report serialization, so a JSON consumer cannot decode a successful empty selection.
+- **Recommendation:** Emit a schema-1 object with an empty benchmarks array for an empty timed selection; exercise both empty and matching selections through the built runner.
 - **Fix with:** error-model
 - **Effort:** S

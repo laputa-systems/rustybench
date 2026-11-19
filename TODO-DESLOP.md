@@ -66,6 +66,14 @@ before `sample_count` made `cargo check` fail with E0560. The two
 fixtures are the control and reproduction for DSLP-9. The remaining
 library and macro review stays in DSLP-2.
 
+
+The DSLP-9 candidate uses the existing Rust parser for expression
+and type boundaries and retains the original tokens for macro
+generation. The targeted registration test passed for both
+option orders and for a benchmark group. Reproduce with
+`cargo test --offline --locked --lib comparisons_and_following_options_register_independently`.
+The full workspace suite, lint, and hosted checks remain to be run.
+
 ## Tickets
 
 

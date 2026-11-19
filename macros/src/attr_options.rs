@@ -1,4 +1,8 @@
-use proc_macro::{Delimiter, TokenStream, TokenTree};
+use proc_macro::{TokenStream, TokenTree};
+use proc_macro2::{TokenStream as TokenStream2, TokenTree as TokenTree2};
+use syn::ext::IdentExt;
+use syn::parse::{Parse, ParseStream, Parser};
+use syn::{Expr, Ident, Token, Type, bracketed};
 
 use crate::{FunctionInfo, MacroKind, tokens};
 
@@ -41,27 +45,10 @@ impl AttrOptions {
         let mut seen_convenience = [false; 4];
         let mut explicit_counter = false;
 
-        let input: Vec<_> = input.into_iter().collect();
-        for option in tokens::split_top_level(&input, ',') {
-            if option.is_empty() {
-                continue;
-            }
-
-            let Some(TokenTree::Ident(ident)) = option.first() else {
-                return Err(error(macro_name, "unsupported option"));
-            };
-
-            let key = ident.to_string();
+        for (key, value) in parse_options.parse(input)
+            .map_err(|err| error(macro_name, &err.to_string()))?
+        {
             let normalized = key.strip_prefix("r#").unwrap_or(&key);
-            let equals = option.iter().position(|token| tokens::is_punct(token, '='));
-            let value = equals
-                .map(|index| tokens::token_stream(option[index + 1..].iter().cloned()))
-                .unwrap_or_else(|| tokens::parse("true"));
-
-            if equals.is_some_and(|index| index != 1) {
-                return Err(error(macro_name, "unsupported option"));
-            }
-
             match normalized {
                 "crate" => set_once(&mut rustybench_crate, value, macro_name, normalized)?,
                 "name" => set_once(&mut name_expr, value, macro_name, normalized)?,
@@ -94,7 +81,7 @@ impl AttrOptions {
                     }
                     set_once(
                         &mut generic.consts,
-                        ExprValue::new_const(value),
+                        ExprValue::new(value),
                         macro_name,
                         normalized,
                     )?;
@@ -129,7 +116,7 @@ impl AttrOptions {
                         return Err(repeated(macro_name, normalized));
                     }
                     explicit_counter = true;
-                    let Some(values) = array_values(&value) else {
+                    let Some(values) = array_values::<Expr>(&value) else {
                         return Err(error(macro_name, "'counters' requires an array"));
                     };
                     counter_values.extend(values.into_iter().map(|value| (value, None)));
@@ -283,11 +270,6 @@ impl ArrayItems {
 
 impl ExprValue {
     fn new(raw: TokenStream) -> Self {
-        let array = array_values(&raw).map(|values| ArrayItems(values.len()));
-        Self { raw, array }
-    }
-
-    fn new_const(raw: TokenStream) -> Self {
         let array = tokens::expression_array_len(&raw).map(ArrayItems);
         Self { raw, array }
     }
@@ -297,32 +279,68 @@ impl ExprValue {
     }
 }
 
-fn parse_types(value: TokenStream, macro_name: &str) -> Result<Vec<TokenStream>, TokenStream> {
-    array_values(&value).ok_or_else(|| error(macro_name, "'types' requires an array"))
+fn parse_options(input: ParseStream<'_>) -> syn::Result<Vec<(String, TokenStream)>> {
+    let mut options = Vec::new();
+    while !input.is_empty() {
+        if input.parse::<Option<Token![,]>>()?.is_some() {
+            continue;
+        }
+        let key = input.call(Ident::parse_any)?.to_string();
+        let value = if input.parse::<Option<Token![=]>>()?.is_some() {
+            match key.strip_prefix("r#").unwrap_or(&key) {
+                "types" => parse_tokens::<TokenTree2>(input)?,
+                _ => parse_tokens::<Expr>(input)?,
+            }
+        } else {
+            tokens::parse("true")
+        };
+        options.push((key, value));
+        if !input.is_empty() {
+            input.parse::<Token![,]>()?;
+        }
+    }
+    Ok(options)
 }
 
-fn array_values(value: &TokenStream) -> Option<Vec<TokenStream>> {
-    let tokens: Vec<_> = value.clone().into_iter().collect();
-    if tokens.len() != 1 {
-        return None;
+fn parse_tokens<T: Parse>(input: ParseStream<'_>) -> syn::Result<TokenStream> {
+    let mut cursor = input.cursor();
+    input.parse::<T>()?;
+    let end = input.cursor();
+    let mut value = TokenStream2::new();
+    while cursor != end {
+        let (token, next) = cursor.token_tree()
+            .ok_or_else(|| input.error("expected a complete option value"))?;
+        value.extend([token]);
+        cursor = next;
     }
-    let TokenTree::Group(group) = &tokens[0] else {
-        return None;
+    Ok(value.into())
+}
+
+fn parse_types(value: TokenStream, macro_name: &str) -> Result<Vec<TokenStream>, TokenStream> {
+    array_values::<Type>(&value).ok_or_else(|| error(macro_name, "'types' requires an array"))
+}
+
+fn array_values<T: Parse>(value: &TokenStream) -> Option<Vec<TokenStream>> {
+    let parser = |input: ParseStream<'_>| {
+        let elements;
+        bracketed!(elements in input);
+        let mut values = Vec::new();
+        while !elements.is_empty() {
+            if elements.parse::<Option<Token![,]>>()?.is_some() {
+                continue;
+            }
+            values.push(parse_tokens::<T>(&elements)?);
+            if !elements.is_empty() {
+                elements.parse::<Token![,]>()?;
+            }
+        }
+        Ok(values)
     };
-    if group.delimiter() != Delimiter::Bracket {
-        return None;
-    }
-    Some(
-        tokens::split_top_level(&group.stream().into_iter().collect::<Vec<_>>(), ',')
-            .into_iter()
-            .filter(|value| !value.is_empty())
-            .map(tokens::token_stream)
-            .collect(),
-    )
+    parser.parse(value.clone()).ok()
 }
 
 fn is_literal_array(value: &TokenStream) -> bool {
-    let Some(values) = array_values(value) else {
+    let Some(values) = array_values::<Expr>(value) else {
         return false;
     };
     values.iter().all(|value| {

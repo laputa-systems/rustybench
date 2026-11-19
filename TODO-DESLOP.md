@@ -5,18 +5,30 @@ Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/mai
 
 ## Report
 
-Not started.
+Ground at `e01963bcbcb2db3c34a91baba0544dce25c5b4a0` used macOS ARM64
+and pinned nightly 2026-11-09. The scoped fleet rule accepted
+the existing Make test entry. Both hosted default checks passed.
+[Default tests](https://github.com/laputa-systems/rustybench/actions/runs/44481013485) ·
+[Default lint](https://github.com/laputa-systems/rustybench/actions/runs/44481013390)
+
+Under a two-core CPU guard with two Cargo build jobs, repo-local
+`TMPDIR` and an isolated `CARGO_TARGET_DIR`, the empty-target and
+warm `make test` calls took 191.75 s and 18.46 s. Each ran 101
+library cases, 30 binary cases, the collector acceptance and 84
+doctests. Five cases were ignored. `make lint` passed in 123.13 s.
+The observations include shared host load and compiler caching.
+
+The inventory counted 15,466 physical Rust lines under `src/`
+and `macros/` and 286 under `tests/` and `benches/`. The
+fleet lists direct development use in defuddle-rs, diff-pretty,
+e, fastermod, fz, gluon, hi-lite, img, ish, laputa, loc, lz,
+rage, smolith, stuff, tm and xsh. The owning boundaries and
+representative workload are in [Verification](AGENTS.md#verification).
+Downstream execution and a readiness-qualified performance gate
+remain open.
 
 ## Tickets
 
-### DSLP-1 · P2 · Ground: baseline, boundaries, and CI test entry point
-
-- **Area:** deslop · ground
-- **Where:** AGENTS.md, Makefile, .github/workflows/
-- **Problem:** Base 4cf65d2; code lines Rust 11.1k (fleet/loc/v1, vendored included); timings not yet measured. CI does not run make test: runs tests directly on pull requests; run make test or make test-ci instead so CI and local verification share one entry point. Open fleet lint findings: rust-collections 3, make-clean-target 1. Consumers in the fleet: defuddle-rs, diff-pretty, e, fastermod, fz, gluon, hi-lite, img, ish, laputa, loc, lz, and 5 more; their tests are the consumer check for API changes. Perf gate: decide in Ground whether a user-visible hot path needs a workload.
-- **Recommendation:** Run the deslop Ground step. Accept: CI runs make test and is green, and AGENTS.md has a Verification section.
-- **Fix with:** deslop
-- **Effort:** S
 
 ### DSLP-2 · P2 · Diagnose: ultrareview into this backlog
 

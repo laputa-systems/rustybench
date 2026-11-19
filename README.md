@@ -4,10 +4,9 @@ Rustybench is a benchmark runner for Rust on macOS and Linux. It measures
 functions registered with `#[rustybench::bench]`, reports time and allocation
 statistics, and can collect JSON baselines for later comparison.
 
-Version 0.5 requires nightly Rust and is tested with `nightly-2026-09-15`
-(Rust 1.100 nightly) and Rust 1.101 nightly (`16d1ffac1`, 2026-10-26).
-The repository remains pinned to `nightly-2026-09-15`. Install it with
-`rustup toolchain install nightly-2026-09-15`.
+Rustybench requires nightly Rust. This checkout uses the toolchain in
+[`rust-toolchain.toml`](rust-toolchain.toml). The examples below select
+that toolchain explicitly for projects outside this checkout.
 
 ## Add a benchmark
 
@@ -42,9 +41,9 @@ Run the benchmark, list its registered names, or select names with a regular
 expression:
 
 ```sh
-cargo +nightly-2026-09-15 bench --bench example
-cargo +nightly-2026-09-15 bench --bench example -- --list
-cargo +nightly-2026-09-15 bench --bench example -- add
+cargo +nightly-2026-11-09 bench --bench example
+cargo +nightly-2026-11-09 bench --bench example -- --list
+cargo +nightly-2026-11-09 bench --bench example -- add
 ```
 
 Pass Rustybench options after Cargo's `--`. For example, add `-- --help` to
@@ -112,7 +111,7 @@ Rustybench's control are not counted.
 
 ## Run and tune benchmarks
 
-Run `cargo +nightly-2026-09-15 bench --bench example -- --help` for runner options.
+Run `cargo +nightly-2026-11-09 bench --bench example -- --help` for runner options.
 Sampling, sorting, and counter settings have `RUSTYBENCH_*` variables, defined
 in [`src/cli.rs`](src/cli.rs). Command-line values override them. Action, format,
 and filter flags have no environment equivalents.
@@ -135,7 +134,7 @@ See [timing](docs/timing.md) for sampling and calibration details.
 Select JSON output with:
 
 ```sh
-cargo +nightly-2026-09-15 bench --bench example -- --format json
+cargo +nightly-2026-11-09 bench --bench example -- --format json
 ```
 
 The schema-1 report contains timing and allocation summaries, with optional
@@ -147,8 +146,8 @@ Install the `rustybench` command-line tool for baseline collection, comparison,
 and budget checks. Collect one benchmark target per command:
 
 ```sh
-cargo +nightly-2026-09-15 install rustybench --version 0.5.0 --locked
-rustybench baseline --root . -- cargo +nightly-2026-09-15 bench --bench example
+cargo +nightly-2026-11-09 install rustybench --version 0.5.0 --locked
+rustybench baseline --root . -- cargo +nightly-2026-11-09 bench --bench example
 rustybench diff BASELINE CANDIDATE
 rustybench check BUDGET CANDIDATE
 ```

@@ -1,5 +1,5 @@
 Prefix: DSLP
-Next: 6
+Next: 7
 
 Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/main/docs/campaigns/deslop.md), tier B). One agent works this file with the `deslop` skill: take the lowest-numbered open ticket whose area does not start with `Needs owner ·`. After DSLP-5, work the open P1 and P2 findings, then fill in `## Report` below.
 
@@ -26,6 +26,15 @@ rage, smolith, stuff, tm and xsh. The owning boundaries and
 representative workload are in [Verification](AGENTS.md#verification).
 Downstream execution and a readiness-qualified performance gate
 remain open.
+
+The CLI Diagnose slice built the locked `e8aa303` binary and checked
+baseline collection, decoding and comparison. A schema-1 fixture with
+two `fixture` rows at 10 and 30 ns and a candidate at 20 ns demonstrated
+DSLP-6. Reversing the duplicate rows made `diff` change from `-33.33%`
+to `+100.00%`. `check` rejected the same duplicate inventory. These
+values are fabricated inputs to test presentation. README examples and
+the development toolchain documentation now match the checked pin.
+The remaining library, macro and collector review stays in DSLP-2.
 
 ## Tickets
 
@@ -64,5 +73,15 @@ remain open.
 - **Problem:** No dead-code scan has run.
 - **Recommendation:** Run the deslop Dead code step. Accept: tools clean or allowlisted with reasons; walk-backs filed as Needs owner tickets.
 - **Fix with:** deslop
+- **Effort:** M
+
+
+### DSLP-6 · P2 · Reject duplicate names before displaying baseline comparisons
+
+- **Area:** Baseline comparison
+- **Where:** src/bin/rustybench.rs:497-518, 615-643, 697-723
+- **Problem:** The built diff command accepted two records named fixture with median_ns values 10 and 30, then displayed either a 33.33 percent decrease or a 100 percent increase against a candidate at 20, depending only on row order. The same input was rejected by check. See Report for the fixture.
+- **Recommendation:** Validate the unique-name invariant before displaying a diff and before comparing with a previous baseline. Reuse the existing duplicate diagnostic path. Test duplicate names in both input roles, preserve missing and added benchmark comparisons, and verify malformed existing baselines survive a failed collection.
+- **Fix with:** durable-state
 - **Effort:** M
 

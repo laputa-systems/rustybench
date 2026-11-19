@@ -27,7 +27,6 @@ pub(crate) enum Action {
     ListTerse,
 }
 
-#[allow(dead_code)]
 impl Action {
     #[inline]
     pub fn is_bench(&self) -> bool {

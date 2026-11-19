@@ -5,6 +5,22 @@ Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/mai
 
 ## Report
 
+Dead code (DSLP-5): on macOS ARM64 with nightly 2026-11-09, the
+workspace all-target, all-feature rustc scan found no dead-code warnings.
+The `Action` suppression was unnecessary: all four predicates are used by
+the runner or benchmark implementation. The test-only allocator, allocation
+map constructor, split accessor, pool count and time-scale list serve the
+allocation, split-vector, thread-pool and duration tests respectively.
+Test modules are exercised by the test harness. No code or dependency was
+removed; cargo-machete 0.10.1 found no unused dependencies. The scan also
+reports 146 unreachable-public visibility diagnostics in private
+implementation modules and test fixtures; these are visibility
+diagnostics, not dead-code findings. Linux-only branches were inspected but
+not compiled or run in this pass. The structural debloat review found no
+proven behavior-preserving cut; documented public APIs, registrations,
+runner options, reports and their tests remain contracts. Consumer tests and
+performance replay were unnecessary for the suppression-only source change.
+
 Tests (DSLP-4): the critical contracts map to existing tests, recorded in
 [docs/deslop-tests.md](docs/deslop-tests.md). The bounded cargo-mutants
 median trial (about four runner-minutes) found two survivors in median
@@ -151,14 +167,6 @@ or performance replay for this documentary pass.
 
 
 
-### DSLP-5 · P2 · Dead code: tools and debloat
-
-- **Area:** deslop · dead code
-- **Where:** whole repository
-- **Problem:** No dead-code scan has run.
-- **Recommendation:** Run the deslop Dead code step. Accept: tools clean or allowlisted with reasons; walk-backs filed as Needs owner tickets.
-- **Fix with:** deslop
-- **Effort:** M
 
 
 

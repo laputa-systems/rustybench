@@ -27,6 +27,8 @@ Rust benchmark runner for macOS and Linux.
 
 ## Verification
 
+`make clean` removes the checkout’s ordinary `./target` directory. It refuses a file or symlink at that path.
+
 - Edit: `cargo test --lib alloc_median_follows_allocation_order_not_time_order`;
   Change: `cargo test --test collector`; Full (manual): `make test`.
   Before edits: 102 library tests 0.81 s, 32 tool tests 0.68 s, one collector,

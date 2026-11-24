@@ -2,6 +2,8 @@
 
 Rust benchmark runner for macOS and Linux.
 
+The roadmap, [docs/roadmap.md](docs/roadmap.md), holds all current and future work; its Status is the resume point.
+
 ## Build, test, and check
 
 - Build: `cargo build --workspace --locked`

@@ -53,6 +53,6 @@ The roadmap, [docs/roadmap.md](docs/roadmap.md), holds all current and future wo
   include shared host load. CI runs `make test` on Linux ARM64 and macOS.
 - Full installed help and Docker strace execution await separate qualification.
 - `make coverage` reports 83.57% lines and 75.28% branches after this audit;
-  coverage is informational. Mutation and fault evidence: `docs/deslop-tests.md`.
+  coverage is informational.
 - The fleet lists 17 direct development consumers; check them on public API changes.
 - `benches/bench.rs` exercises runner behavior; it needs performance-gate qualification.

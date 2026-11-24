@@ -24,5 +24,8 @@ The [`Makefile`](../Makefile) defines these local workflows:
 `sh tools/test_bump_minor_release.sh` checks the release script's version
 comparison and planning functions without publishing.
 
+Coverage does not establish assertion quality. A missing mutation gate or an
+unconfirmed timeout is not a passing mutation result.
+
 The repository's supported targets, public names, timing backend, and schema
 constraints are summarized in [AGENTS.md](../AGENTS.md).

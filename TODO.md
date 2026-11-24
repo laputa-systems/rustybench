@@ -1,5 +1,23 @@
 Prefix: RUST
-Next: 40
+Next: 42
+### RUST-40 · P2 · Qualify mutation testing for critical code
+
+- **Area:** tests
+- **Where:** src/benchmark/mod.rs; test suites; Makefile
+- **Problem:** Unproven: the bounded median mutation trial does not qualify diff-based mutant selection or a retained mutation gate, and the previous test-work acceptance called for undispositioned critical-code survivors to be resolved.
+- **Recommendation:** Qualify diff-based selection and timeouts on critical code, disposition survivors, and qualify a retained gate where the required tools are available; do not count missing gates or unconfirmed timeouts as passes.
+- **Fix with:** test-audit
+- **Effort:** M
+
+### RUST-41 · P2 · Qualify the warm test suite cost comparison
+
+- **Area:** tests
+- **Where:** Makefile; AGENTS.md verification
+- **Problem:** Unproven: the warm test suite cost comparison has not been measured on a qualified host, so the test cost budget has not been established.
+- **Recommendation:** Compare warm suite costs on a host passing perf-gate-ready before and immediately after measurement, and assess the result against the observed spread.
+- **Fix with:** benchmark-checklist
+- **Effort:** M
+
 ### RUST-35 · P3 · Reject malformed UTF-8 in benchmark reports
 
 - **Area:** collector
